@@ -1,0 +1,9 @@
+# Arquivos de Node
+node_modules
+
+# Arquivos de segurança (SEUS SEUS SEUS)
+.env
+serviceAccountKey.json 
+
+# Logs e outros
+npm-debug.log
