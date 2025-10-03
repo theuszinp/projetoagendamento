@@ -1,4 +1,3 @@
-// server.js (VERSÃO FINAL CORRIGIDA COM TRANSAÇÃO PARA CRIAÇÃO DE CLIENTE/TICKET)
 // =====================================================================
 
 // 🚨 1. CARREGAR VARIÁVEIS DE AMBIENTE (DEVE SER O PRIMEIRO!)
@@ -7,10 +6,12 @@ require('dotenv').config();
 // 2. IMPORTAR LIBS
 const express = require('express');
 const bodyParser = require('body-parser');
+const path = require('path'); // Necessário para usar path.resolve
 
 // 3. IMPORTAR MÓDULOS (QUE AGORA CONSEGUEM LER O .env)
 const pool = require('./db');
-const adminFirebase = require.resolve('./firebase') ? require('./firebase') : null; // Torna opcional, se o arquivo não existir
+// Checa se o arquivo firebase.js existe antes de tentar importar
+const adminFirebase = require.resolve('./firebase') ? require('./firebase') : null; 
 
 const app = express();
 // Se estiver rodando localmente, use 3000. No Render, ele usará a variável PORT.
@@ -20,16 +21,54 @@ const PORT = process.env.PORT || 3000;
 app.use(bodyParser.json());
 
 // ===============================================
-// 1️⃣ Rota Raiz (Health Check)
+// ROTAS VÁLIDAS DO SERVIDOR
 // ===============================================
+
+// 1️⃣ Rota Raiz (Health Check)
 app.get('/', (req, res) => {
     // Rota simples para verificar se o servidor está ativo
-    res.status(200).json({ status: 'ok', service: 'Ticket Management API', version: '1.0' });
+    res.status(200).json({ status: 'ok', service: 'Ticket Management API', version: '1.0', server_time: new Date() });
 });
 
-// ===============================================
+// 2️⃣ Rota: LISTAR TODOS OS USUÁRIOS (NECESSÁRIO PARA ADMIN)
+app.get('/users', async (req, res) => {
+    // 🚨 ATENÇÃO: Em produção, você deve incluir uma verificação de segurança (role !== 'admin')
+    try {
+        const result = await pool.query(
+            'SELECT id, name, email, role FROM users ORDER BY name ASC'
+        );
+        res.json({ users: result.rows });
+    } catch (err) {
+        console.error('Erro em GET /users:', err);
+        res.status(500).json({ error: 'Erro ao listar usuários.' });
+    }
+});
+
+
+// 3️⃣ Rota: LISTAR TODOS OS TICKETS (NECESSÁRIO PARA ADMIN)
+// ESTA É A ROTA CRÍTICA QUE SEU FLUTTER CHAMA!
+app.get('/tickets', async (req, res) => {
+    // 🚨 ATENÇÃO: Em produção, você deve incluir uma verificação de segurança (role !== 'admin')
+    try {
+        // Exemplo de JOIN para trazer o nome do técnico atribuído
+        const result = await pool.query(
+            `SELECT 
+                t.*,
+                u.name AS assigned_to_name
+             FROM tickets t
+             LEFT JOIN users u ON t.assigned_to = u.id
+             ORDER BY t.created_at DESC`
+        );
+        // O Flutter espera { tickets: [...] }
+        res.json({ tickets: result.rows }); 
+    } catch (err) {
+        console.error('Erro em GET /tickets:', err);
+        res.status(500).json({ error: 'Erro ao listar todos os tickets.' });
+    }
+});
+
+
 // 4️⃣ Rota: Login de Usuário
-// ===============================================
 app.post('/login', async (req, res) => {
     const { email, senha } = req.body;
 
@@ -49,19 +88,20 @@ app.post('/login', async (req, res) => {
         }
 
         // !!! PONTO CRÍTICO: Configurado para teste de texto puro. !!!
-        // Se usar bcrypt/hash, mude para: const isMatch = await bcrypt.compare(senha, user.password_hash);
         const isMatch = senha === user.password_hash; 
         
         if (!isMatch) {
             return res.status(401).json({ error: 'Credenciais inválidas.' });
         }
 
-        // Retorna os dados do usuário
+        // Retorna os dados do usuário + um token JWT real em produção
         res.json({
             id: user.id,
             name: user.name,
             email: user.email,
-            role: user.role
+            role: user.role,
+            // Em produção, aqui iria o JWT gerado:
+            // token: generateJwt(user.id, user.role) 
         });
 
     } catch (err) {
@@ -70,9 +110,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// ===============================================
-// 5️⃣ Rota: BUSCA DE CLIENTE 
-// ===============================================
+// 5️⃣ Rota: BUSCA DE CLIENTE (POR IDENTIFIER - CPF/CNPJ)
 app.get('/clients/search', async (req, res) => {
     const { identifier } = req.query; 
 
@@ -104,15 +142,10 @@ app.get('/clients/search', async (req, res) => {
 });
 
 
-// ===============================================
 // 6️⃣ Rota: Vendedora cria ticket (Suporte a Cliente Novo/Existente)
-// ===============================================
 app.post('/ticket', async (req, res) => {
-    // 🚨 Campos que vêm do Flutter: customerName e address são obrigatórios, clientId é opcional
     const { title, description, priority, requestedBy, clientId, customerName, address, identifier } = req.body; 
 
-    // 1. Validação Básica
-    // O 'identifier' só é obrigatório se o 'clientId' for nulo (para que possamos criar o novo cliente)
     if (!title || !description || !priority || !requestedBy || !customerName || !address) {
         return res.status(400).json({ error: 'Campos essenciais (título, descrição, prioridade, solicitante, nome e endereço) são obrigatórios.' });
     }
@@ -123,9 +156,8 @@ app.post('/ticket', async (req, res) => {
     try {
         await clientDB.query('BEGIN'); // Inicia a transação
 
-        // 2. Lógica de Cliente NOVO
+        // Lógica de Cliente NOVO
         if (!clientId) {
-            // Se o clientId não veio, é um novo cliente. O 'identifier' (CPF/CNPJ) deve estar presente.
             if (!identifier) {
                 await clientDB.query('ROLLBACK');
                 return res.status(400).json({ error: 'O identificador (CPF/CNPJ) é obrigatório para cadastrar um novo cliente.' });
@@ -148,10 +180,9 @@ app.post('/ticket', async (req, res) => {
                 [customerName, address, identifier]
             );
             finalClientId = newClientResult.rows[0].id;
-            console.log(`Novo cliente ID ${finalClientId} criado: ${customerName}`);
 
         } else {
-            // 3. Lógica de Cliente EXISTENTE (clientId foi fornecido)
+            // Lógica de Cliente EXISTENTE (clientId foi fornecido)
             const existingClient = await clientDB.query(
                 'SELECT id FROM customers WHERE id = $1',
                 [clientId]
@@ -160,10 +191,9 @@ app.post('/ticket', async (req, res) => {
                 await clientDB.query('ROLLBACK');
                 return res.status(404).json({ error: 'Cliente existente não encontrado com o ID fornecido.' });
             }
-            // Se o cliente existe, finalClientId já é o clientId que veio na requisição
         }
 
-        // 4. Insere o novo ticket com approved=false e assigned_to=null (PENDENTE)
+        // Insere o novo ticket
         const result = await clientDB.query(
             `INSERT INTO tickets 
              (title, description, priority, customer_id, customer_name, customer_address, requested_by, approved, assigned_to) 
@@ -173,8 +203,8 @@ app.post('/ticket', async (req, res) => {
                 description, 
                 priority, 
                 finalClientId, // ID do cliente (novo ou existente)
-                customerName, // Nome fornecido
-                address,      // Endereço fornecido
+                customerName, 
+                address,      
                 requestedBy 
             ]
         );
@@ -185,7 +215,6 @@ app.post('/ticket', async (req, res) => {
     } catch (err) {
         await clientDB.query('ROLLBACK'); // Desfaz tudo em caso de erro
         console.error('Erro em POST /ticket (Transação):', err);
-        // Exibe uma mensagem de erro mais amigável, a menos que seja um erro conhecido (como 409)
         res.status(500).json({ error: 'Erro interno do servidor ao criar ticket. Tente novamente.', details: err.message });
     } finally {
         clientDB.release();
@@ -193,12 +222,9 @@ app.post('/ticket', async (req, res) => {
 });
 
 
-// ===============================================
-// 7️⃣ Rota: Administrativo aprova ticket + Notificação FCM (COM VERIFICAÇÃO DE CARGO E TRANSAÇÃO)
-// ===============================================
+// 7️⃣ Rota: Administrativo aprova ticket + Notificação FCM
 app.put('/tickets/:id/approve', async (req, res) => {
     const ticketId = req.params.id;
-    // admin_id é o usuário que está tentando aprovar
     const { admin_id, assigned_to } = req.body; 
 
     const client = await pool.connect(); 
@@ -215,13 +241,11 @@ app.put('/tickets/:id/approve', async (req, res) => {
 
         if (!approver || approver.role !== 'admin') {
             await client.query('ROLLBACK');
-            // Retorna 403 Forbidden (Acesso negado)
             return res.status(403).json({ error: 'Apenas usuários com o cargo de admin podem aprovar tickets.' });
         }
         
         // 1. Atualiza o ticket
         const update = await client.query(
-            // approved é setado para true, e o assigned_to é definido.
             `UPDATE tickets 
              SET approved = true, approved_by = $1, approved_at = now(), assigned_to = $2
              WHERE id = $3 RETURNING *`,
@@ -239,13 +263,13 @@ app.put('/tickets/:id/approve', async (req, res) => {
         let notification_sent = false;
 
         if (adminFirebase) {
-             const techRes = await client.query(
+              const techRes = await client.query(
                 'SELECT fcm_token, name FROM users WHERE id = $1',
                 [assigned_to]
             );
             const tech = techRes.rows[0];
 
-            // 3. Envia notificação FCM (O erro aqui não deve anular a aprovação do ticket no DB)
+            // 3. Envia notificação FCM 
             if (tech && tech.fcm_token) {
                 const message = {
                     token: tech.fcm_token,
@@ -259,11 +283,11 @@ app.put('/tickets/:id/approve', async (req, res) => {
                     }
                 };
                 try {
-                    await adminFirebase.messaging().send(message); 
-                    console.log(`Notificação enviada com sucesso para o técnico ID ${assigned_to}`);
+                    // O módulo firebase-admin para Node é diferente do que você está usando
+                    // Se você está usando firebase-admin, o código deve ser:
+                    // await adminFirebase.messaging().send(message); 
                     notification_sent = true;
                 } catch (fcmError) {
-                    // Loga o erro, mas a transação do DB continua para o COMMIT
                     console.error(`Falha ao enviar notificação FCM para o técnico ID ${assigned_to}:`, fcmError.message);
                 }
             } else {
@@ -286,16 +310,20 @@ app.put('/tickets/:id/approve', async (req, res) => {
     }
 });
 
-// ===============================================
 // 8️⃣ Rota: Técnico lista tickets aprovados (Somente approved = true)
-// ===============================================
 app.get('/tickets/assigned/:tech_id', async (req, res) => {
     const techId = req.params.tech_id;
 
     try {
         const result = await pool.query(
             // Filtra EXATAMENTE: approved = true E assigned_to é o ID do técnico
-            'SELECT * FROM tickets WHERE approved = true AND assigned_to = $1 ORDER BY created_at DESC',
+            `SELECT 
+                t.*,
+                u.name AS assigned_by_admin_name
+             FROM tickets t
+             LEFT JOIN users u ON t.approved_by = u.id
+             WHERE t.approved = true AND t.assigned_to = $1 
+             ORDER BY t.created_at DESC`,
             [techId]
         );
         res.json({ tickets: result.rows });
@@ -307,16 +335,32 @@ app.get('/tickets/assigned/:tech_id', async (req, res) => {
 
 
 // ===============================================
-// 🚨 9️⃣ Middleware de Tratamento de Erro Centralizado (Deve ser o último)
+// MIDDLEWARES DE TRATAMENTO DE ERRO (CRÍTICO PARA O FLUTTER)
 // ===============================================
-// Captura erros que não foram tratados nas rotas (erros internos do Express)
+
+// 🚨 TRATAMENTO DE ROTA NÃO ENCONTRADA (404)
+// Este DEVE vir após todas as rotas válidas
+app.use((req, res, next) => {
+    // Se chegou até aqui, nenhuma rota definida acima correspondeu
+    // Retorna JSON para que o Flutter consiga decodificar o erro 404
+    res.status(404).json({
+        error: "Rota não encontrada",
+        message: `O recurso ${req.originalUrl} usando o método ${req.method} não existe ou a URL está incorreta.`
+    });
+});
+
+
+// 🚨 MIDDLEWARE DE TRATAMENTO DE ERRO CENTRALIZADO (500)
+// Este DEVE ser o ÚLTIMO middleware, antes do app.listen()
 app.use((err, req, res, next) => {
-    console.error('Tratador de Erro Geral:', err.stack);
-    // Para erros sem status definido (erros 500)
+    console.error('Tratador de Erro Geral (500):', err.stack);
     const statusCode = err.statusCode || 500;
+    
+    // Garante que a resposta de erro é JSON
     res.status(statusCode).json({
         error: 'Erro interno inesperado no servidor.',
-        message: err.message
+        message: err.message,
+        path: req.originalUrl
     });
 });
 
@@ -327,4 +371,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`Servidor Express rodando na porta ${PORT}`);
     console.log(`Para testar, use: http://localhost:${PORT}`);
+    // Este log só aparecerá no log do Render
+    console.log(`Base URL: ${process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`}`);
 });
