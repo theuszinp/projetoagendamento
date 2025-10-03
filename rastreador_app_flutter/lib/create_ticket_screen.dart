@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+// CORREÇÃO FINALIZADA: Importando o pacote conforme definido no pubspec.yaml
+import 'package:lucide_icons_flutter/lucide_icons.dart'; 
 
 // Substitua pelo seu BASE_URL
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
@@ -22,26 +24,95 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   // Chave para validação do formulário
   final _formKey = GlobalKey<FormState>();
   
+  // Variáveis CRÍTICAS para a API
+  int? _clientId; // ID numérico retornado pela busca (OBRIGATÓRIO para a API)
+  String? _selectedPriority; // Prioridade do serviço (OBRIGATÓRIO para a API)
+
   // Controladores
+  final TextEditingController _titleController = TextEditingController(); 
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _trackerIdController = TextEditingController(); 
+  final TextEditingController _identifierController = TextEditingController(); // Usado para busca (CPF/CNPJ)
   
   bool _isLoading = false;
+  bool _isSearching = false;
+
+  final List<String> _priorities = ['Baixa', 'Média', 'Alta'];
 
   @override
   void dispose() {
+    _titleController.dispose();
     _customerNameController.dispose();
     _addressController.dispose();
     _descriptionController.dispose();
-    _trackerIdController.dispose();
+    _identifierController.dispose();
     super.dispose();
   }
 
+  // ===========================================
+  // 1. Lógica de Busca de Cliente (/clients/search)
+  // ===========================================
+  Future<void> _searchClient() async {
+    final identifier = _identifierController.text.trim();
+    if (identifier.isEmpty) {
+      _showSnackBar('Obrigatório informar CPF/CNPJ para buscar.', Colors.orange);
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _clientId = null; // Reseta o ID do cliente
+      _customerNameController.clear();
+      _addressController.clear();
+    });
+
+    try {
+      final url = Uri.parse('$API_BASE_URL/clients/search?identifier=$identifier');
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        setState(() {
+          // 🚨 CRÍTICO: Armazena o ID para o POST /ticket
+          _clientId = data['id']; 
+          _customerNameController.text = data['name'] ?? 'Cliente sem nome';
+          _addressController.text = data['address'] ?? 'Endereço não fornecido';
+        });
+        _showSnackBar('✅ Cliente encontrado com sucesso!', Colors.green);
+      } else {
+        // Se o cliente não for encontrado (404), limpa os campos para evitar confusão.
+        _customerNameController.clear();
+        _addressController.clear();
+        _showSnackBar('⚠️ Cliente não encontrado ou erro na busca.', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('❌ Erro de conexão ao buscar cliente.', Colors.deepOrange);
+      print('Erro ao buscar cliente: $e');
+    } finally {
+      setState(() {
+        _isSearching = false;
+      });
+    }
+  }
+
+  // ===========================================
+  // 2. Lógica de Envio de Ticket (POST /ticket)
+  // ===========================================
   Future<void> _submitTicket() async {
-    // 1. Validação do formulário
+    // 1. Validação do formulário Flutter
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    // 2. Validação dos IDs e Prioridade
+    if (_clientId == null) {
+      _showSnackBar('⚠️ Por favor, busque e selecione um cliente válido primeiro.', Colors.red);
+      return;
+    }
+    if (_selectedPriority == null) {
+      _showSnackBar('⚠️ A prioridade do agendamento é obrigatória.', Colors.red);
       return;
     }
 
@@ -50,65 +121,33 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('$API_BASE_URL/tickets'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          // Campos obrigatórios
-          'customer_name': _customerNameController.text.trim(),
-          'customer_address': _addressController.text.trim(),
-          'description': _descriptionController.text.trim(),
-          'requested_by': widget.requestedByUserId, // ID do usuário logado (Vendedor)
+      // 🚨 CRÍTICO: Ajusta o corpo para corresponder aos campos OBRIGATÓRIOS do server.js
+      final body = {
+        'title': _titleController.text.trim(), 
+        'description': _descriptionController.text.trim(),
+        'priority': _selectedPriority, 
+        'requestedBy': widget.requestedByUserId, // ID do Vendedor logado
+        'clientId': _clientId, // ID numérico do cliente
+      };
 
-          // Campos opcionais
-          'tracker_id': _trackerIdController.text.trim().isEmpty 
-                        ? null 
-                        : _trackerIdController.text.trim(),
-          'assigned_to': null, // O Admin fará a atribuição depois
-        }),
+      final response = await http.post(
+        Uri.parse('$API_BASE_URL/ticket'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 201) {
-        // Sucesso: Limpa o formulário e mostra mensagem
         _formKey.currentState!.reset();
-        _customerNameController.clear();
-        _addressController.clear();
-        _descriptionController.clear();
-        _trackerIdController.clear();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Agendamento criado com sucesso!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          // Opcional: Navegar de volta para a lista (futura)
-        }
+        _clearForm();
+        _showSnackBar('✅ Agendamento criado com sucesso! Pendente de aprovação do Admin.', Colors.green);
       } else {
-        // Erro retornado pela API
         final errorData = jsonDecode(response.body);
         String message = errorData['error'] ?? 'Falha ao criar agendamento.';
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('⚠️ Erro: $message'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        _showSnackBar('⚠️ Erro: $message', Colors.red);
       }
     } catch (e) {
-      // Erro de rede/conexão
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Erro de conexão. Verifique a API/Internet.'),
-            backgroundColor: Colors.deepOrange,
-          ),
-        );
-      }
+      _showSnackBar('❌ Erro de conexão. Verifique a API/Internet.', Colors.deepOrange);
+      print('Erro ao enviar ticket: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -118,12 +157,39 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     }
   }
 
+  // Helper para limpar formulário e IDs
+  void _clearForm() {
+    setState(() {
+      _clientId = null;
+      _selectedPriority = null;
+    });
+    _titleController.clear();
+    _customerNameController.clear();
+    _addressController.clear();
+    _descriptionController.clear();
+    _identifierController.clear();
+  }
+
+  // Helper para SnackBar
+  void _showSnackBar(String message, Color color) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Novo Agendamento'),
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: theme.primaryColor,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -133,65 +199,147 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              // ... Campos de Formulário (Mantidos como no código anterior) ...
-              
-              // Título
+              // --- 1. SEÇÃO DE BUSCA (CRÍTICA) ---
               Text(
-                'Dados do Cliente',
-                style: Theme.of(context).textTheme.headlineSmall,
+                'Buscar Cliente por Identificador',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
               ),
-              const Divider(),
+              const Divider(color: Colors.grey),
               const SizedBox(height: 15),
 
-              // Campo Nome do Cliente
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _identifierController,
+                      keyboardType: TextInputType.text,
+                      decoration: _buildInputDecoration('CPF/CNPJ do Cliente', LucideIcons.scan),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'O CPF/CNPJ é obrigatório para busca.';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Botão de Busca
+                  _isSearching 
+                      ? const SizedBox(
+                          width: 48, 
+                          height: 48, 
+                          child: Center(child: CircularProgressIndicator()))
+                      : IconButton(
+                          icon: Icon(LucideIcons.search, size: 28, color: theme.primaryColor),
+                          onPressed: _searchClient,
+                          tooltip: 'Buscar Cliente',
+                        ),
+                ],
+              ),
+              const SizedBox(height: 30),
+
+              // --- 2. DADOS DO TICKET ---
+              Text(
+                'Detalhes do Agendamento',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              ),
+              const Divider(color: Colors.grey),
+              const SizedBox(height: 15),
+
+              // Campo Título (OBRIGATÓRIO)
               TextFormField(
-                controller: _customerNameController,
-                decoration: _buildInputDecoration('Nome Completo', Icons.person),
+                controller: _titleController,
+                decoration: _buildInputDecoration('Título do Serviço (Ex: Instalação Padrão)', LucideIcons.tag),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'O nome do cliente é obrigatório.';
+                    return 'O título é obrigatório.';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 15),
 
-              // Campo Endereço
-              TextFormField(
-                controller: _addressController,
-                maxLines: 3,
-                keyboardType: TextInputType.streetAddress,
-                decoration: _buildInputDecoration('Endereço de Instalação', Icons.location_on),
+              // Dropdown de Prioridade (OBRIGATÓRIO)
+              DropdownButtonFormField<String>(
+                decoration: _buildInputDecoration('Prioridade do Serviço', LucideIcons.zap),
+                value: _selectedPriority,
+                items: _priorities.map((String priority) {
+                  return DropdownMenuItem<String>(
+                    value: priority,
+                    child: Text(priority),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedPriority = newValue;
+                  });
+                },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'O endereço é obrigatório.';
+                    return 'Selecione a prioridade.';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 15),
-
+              
               // Campo Descrição/Detalhes
               TextFormField(
                 controller: _descriptionController,
                 maxLines: 3,
-                decoration: _buildInputDecoration('Descrição (Detalhes do Serviço)', Icons.description),
-              ),
-              const SizedBox(height: 15),
-              
-              // Campo ID Rastreador (Opcional)
-              TextFormField(
-                controller: _trackerIdController,
-                keyboardType: TextInputType.text,
-                decoration: _buildInputDecoration('ID Rastreador (IMEI ou Código)', Icons.devices),
+                decoration: _buildInputDecoration('Descrição (Detalhes do Serviço)', LucideIcons.clipboardList),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'A descrição é obrigatória.';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 30),
 
-              // Botão de Envio (Com Loading Integrado)
+              // --- 3. DADOS DO CLIENTE PREENCHIDOS PELA BUSCA ---
+              Text(
+                'Dados do Cliente (Preenchimento Automático)',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              ),
+              const Divider(color: Colors.grey),
+              const SizedBox(height: 15),
+
+              // Campo Nome do Cliente (ReadOnly)
+              TextFormField(
+                controller: _customerNameController,
+                readOnly: true, // Deve ser preenchido pela busca
+                decoration: _buildInputDecoration('Nome Completo (Preenchido Automaticamente)', LucideIcons.person).copyWith(
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                ),
+                validator: (value) {
+                  if (_clientId == null) {
+                    return 'Busque um cliente válido antes de registrar.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 15),
+
+              // Campo Endereço (ReadOnly)
+              TextFormField(
+                controller: _addressController,
+                readOnly: true, // Deve ser preenchido pela busca
+                maxLines: 3,
+                keyboardType: TextInputType.streetAddress,
+                decoration: _buildInputDecoration('Endereço de Instalação (Preenchido Automaticamente)', LucideIcons.mapPin).copyWith(
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                ),
+              ),
+              const SizedBox(height: 30),
+
+              // Botão de Envio
               ElevatedButton(
-                onPressed: _isLoading ? null : _submitTicket,
+                onPressed: (_isLoading || _isSearching) ? null : _submitTicket,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
+                  backgroundColor: theme.primaryColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

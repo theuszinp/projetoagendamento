@@ -46,6 +46,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # PACOTE ADICIONADO PARA OS ÍCONES LUCIDE
+  lucide_icons_flutter: ^1.0.0 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
