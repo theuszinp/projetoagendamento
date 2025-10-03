@@ -309,7 +309,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               TextFormField(
                 controller: _customerNameController,
                 readOnly: true, // Deve ser preenchido pela busca
-                decoration: _buildInputDecoration('Nome Completo (Preenchido Automaticamente)', LucideIcons.person).copyWith(
+                // CORREÇÃO: Usando 'LucideIcons.user' em vez de 'LucideIcons.person'
+                decoration: _buildInputDecoration('Nome Completo (Preenchido Automaticamente)', LucideIcons.user).copyWith(
                   filled: true,
                   fillColor: Colors.grey[100],
                 ),
