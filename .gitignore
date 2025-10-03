@@ -1,9 +1,21 @@
-# Arquivos de Node
+Arquivos de Node
 node_modules
+/package-lock.json
 
-# Arquivos de segurança (SEUS SEUS SEUS)
+Arquivos de segurança (SEUS SEUS SEUS)
 .env
-serviceAccountKey.json 
+.env.local
+.env.*.local
+serviceAccountKey.json
+/firebase-service-account-key.json
+*.json
 
-# Logs e outros
-npm-debug.log
+Logs e outros
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+/logs
+
+Diretórios de Build
+/dist
+/build
