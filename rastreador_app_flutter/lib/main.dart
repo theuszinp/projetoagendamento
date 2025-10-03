@@ -3,19 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 // 🚨 IMPORTAÇÕES NECESSÁRIAS PARA O FLUXO COMPLETO
+// Nota: Assumimos que essas classes existem e estão em PascalCase
 import 'create_ticket_screen.dart'; 
 import 'techdashboardscreen.dart'; 
-import 'admindashboardscreen.dart'; // <<< NOVO: Importação do Dashboard do Admin
+import 'admindashboardscreen.dart'; // Importação do Dashboard do Admin
 
 // URL base do seu backend no Render
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const RastreadorApp()); // Renomeado MyApp para RastreadorApp
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class RastreadorApp extends StatelessWidget {
+  const RastreadorApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -89,19 +90,25 @@ class _LoginPageState extends State<LoginPage> {
         // 4. Sucesso no login!
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         
-        // 🚨 NOVO: Lógica para extrair o role e token (que será adicionado no backend)
         final role = data['role'];
-        final token = data['token'] ?? 'fake-token-do-db'; // Presume que o token virá, mas usa um fallback
+        final token = data['token'] ?? 'fake-token-do-db'; 
+        // Garante que userId seja um inteiro, que é o esperado para a rota
+        final userId = (data['id'] is int) ? data['id'] : int.tryParse(data['id'].toString()) ?? 0;
 
         if (mounted) {
           // Usa pushReplacement para que o usuário não possa voltar para o login
           
-          // >>> REDIRECIONAMENTO CORRIGIDO E ATUALIZADO <<<
+          // >>> REDIRECIONAMENTO FINAL (ADMINISTRADOR BYPASS A HOMESCREEN) <<<
           if (role == 'admin') {
+            // Admin vai DIRETAMENTE para o Admin Dashboard
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => AdminDashboardScreen(authToken: token), // Redireciona para o Admin Dashboard
+                // CORREÇÃO: Passando o userId, conforme exigido pelo construtor AdminDashboardScreen
+                builder: (context) => AdminDashboardScreen(
+                  authToken: token,
+                  userId: userId, // <<< NOVO PARAMETRO ADICIONADO AQUI
+                ), 
               ),
             );
           } else {
@@ -131,12 +138,12 @@ class _LoginPageState extends State<LoginPage> {
               // Caso a resposta não seja JSON (erros genéricos ou servidor retornando HTML)
               if (mounted) {
                ScaffoldMessenger.of(context).showSnackBar(
-                 const SnackBar(
-                   content: Text('Erro na API. O servidor pode estar inativo ou o endpoint está incorreto.'),
-                   backgroundColor: Colors.deepOrange,
-                 ),
-               );
-              }
+                  const SnackBar(
+                    content: Text('Erro na API. O servidor pode estar inativo ou o endpoint está incorreto.'),
+                    backgroundColor: Colors.deepOrange,
+                  ),
+                );
+        }
         }
       }
     } catch (e) {
@@ -261,6 +268,7 @@ class _LoginPageState extends State<LoginPage> {
 
 // ===============================================
 // TELA DE HOME (MENU PRINCIPAL)
+// Exclusiva para Vendedor ('seller') e Técnico ('tech')
 // ===============================================
 
 class HomeScreen extends StatelessWidget {
@@ -278,9 +286,8 @@ class HomeScreen extends StatelessWidget {
     String userEmail = userData['email'] ?? 'Sem E-mail';
     String rawData = jsonEncode(userData); // Para mostrar no debug
     
-    // 🚨 NOVO: Extrai o token, pois o AdminDashboard precisa dele.
-    // Como a HomeScreen recebe o Map completo, o token precisa vir do backend no /login.
-    String authToken = userData['token'] ?? 'fake-token-do-db'; 
+    // O token não é estritamente necessário na HomeScreen, mas é extraído por completude
+    // String authToken = userData['token'] ?? 'fake-token-do-db'; 
 
     return Scaffold(
       appBar: AppBar(
@@ -319,19 +326,19 @@ class HomeScreen extends StatelessWidget {
               Text('Você está logado como ${userRole.toUpperCase()}.', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 30),
 
-              // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR/ADMIN)
-              if (userRole == 'admin' || userRole == 'seller')
+              // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR)
+              if (userRole == 'seller') // Removido 'admin' daqui, pois ele não chega nesta tela
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10.0),
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.add_to_photos_rounded),
-                    label: const Text('Novo Agendamento', style: TextStyle(fontSize: 16)),
+                    label: const Text('Novo Agendamento (Vendedor)', style: TextStyle(fontSize: 16)),
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => CreateTicketScreen(
-                            requestedByUserId: userId, // Passa o ID do Vendedor/Admin
+                            requestedByUserId: userId, // Passa o ID do Vendedor
                           ),
                         ),
                       );
@@ -354,7 +361,6 @@ class HomeScreen extends StatelessWidget {
                     icon: const Icon(Icons.build_circle),
                     label: const Text('Meus Chamados (Técnico)', style: TextStyle(fontSize: 16)),
                     onPressed: () {
-                      // >>> NAVEGAÇÃO CORRIGIDA AQUI <<<
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -373,32 +379,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 
-              // 🚨 BOTÃO DO ADMIN - AGORA FUNCIONAL
-              if (userRole == 'admin')
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10.0),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.security),
-                    label: const Text('Gestão de Chamados (Admin)', style: TextStyle(fontSize: 16)),
-                    onPressed: () {
-                      // >>> AÇÃO ATUALIZADA PARA IR PARA A TELA REAL <<<
-                       Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AdminDashboardScreen(
-                            authToken: authToken, // Passa o token para buscar todos os tickets
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
+              // 🚨 BOTÃO DO ADMIN - REMOVIDO
+              // A lógica para admin foi movida para a LoginPage, 
+              // garantindo que ele não acesse a HomeScreen.
                 
               const SizedBox(height: 50),
 
