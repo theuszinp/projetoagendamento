@@ -1,4 +1,4 @@
-// server.js (VERSÃO FINAL COM TODAS AS ROTAS)
+// server.js (VERSÃO FINAL CORRIGIDA COM TRANSAÇÃO PARA CRIAÇÃO DE CLIENTE/TICKET)
 // =====================================================================
 
 // 🚨 1. CARREGAR VARIÁVEIS DE AMBIENTE (DEVE SER O PRIMEIRO!)
@@ -10,7 +10,7 @@ const bodyParser = require('body-parser');
 
 // 3. IMPORTAR MÓDULOS (QUE AGORA CONSEGUEM LER O .env)
 const pool = require('./db');
-const adminFirebase = require('./firebase'); 
+const adminFirebase = require.resolve('./firebase') ? require('./firebase') : null; // Torna opcional, se o arquivo não existir
 
 const app = express();
 // Se estiver rodando localmente, use 3000. No Render, ele usará a variável PORT.
@@ -105,30 +105,66 @@ app.get('/clients/search', async (req, res) => {
 
 
 // ===============================================
-// 6️⃣ Rota: Vendedora cria ticket (Somente Cadastro)
+// 6️⃣ Rota: Vendedora cria ticket (Suporte a Cliente Novo/Existente)
 // ===============================================
 app.post('/ticket', async (req, res) => {
-    // Campos que vêm do Flutter
-    const { title, description, priority, requestedBy, clientId } = req.body; 
+    // 🚨 Campos que vêm do Flutter: customerName e address são obrigatórios, clientId é opcional
+    const { title, description, priority, requestedBy, clientId, customerName, address, identifier } = req.body; 
 
-    if (!title || !description || !priority || !requestedBy || !clientId) {
-        return res.status(400).json({ error: 'Todos os campos de ticket e o ID do cliente são obrigatórios.' });
+    // 1. Validação Básica
+    // O 'identifier' só é obrigatório se o 'clientId' for nulo (para que possamos criar o novo cliente)
+    if (!title || !description || !priority || !requestedBy || !customerName || !address) {
+        return res.status(400).json({ error: 'Campos essenciais (título, descrição, prioridade, solicitante, nome e endereço) são obrigatórios.' });
     }
 
-    try {
-        // 1. Busca os dados do cliente para preencher os campos de endereço/nome
-        const clientRes = await pool.query(
-            'SELECT name, address FROM customers WHERE id = $1',
-            [clientId]
-        );
-        const client = clientRes.rows[0];
+    const clientDB = await pool.connect();
+    let finalClientId = clientId;
 
-        if (!client) {
-            return res.status(404).json({ error: 'Cliente com ID informado não existe.' });
+    try {
+        await clientDB.query('BEGIN'); // Inicia a transação
+
+        // 2. Lógica de Cliente NOVO
+        if (!clientId) {
+            // Se o clientId não veio, é um novo cliente. O 'identifier' (CPF/CNPJ) deve estar presente.
+            if (!identifier) {
+                await clientDB.query('ROLLBACK');
+                return res.status(400).json({ error: 'O identificador (CPF/CNPJ) é obrigatório para cadastrar um novo cliente.' });
+            }
+
+            // Garante que o identificador (CPF/CNPJ) não existe ainda para evitar duplicidade
+            const existingIdResult = await clientDB.query(
+                'SELECT id FROM customers WHERE identifier = $1',
+                [identifier]
+            );
+
+            if (existingIdResult.rows.length > 0) {
+                 await clientDB.query('ROLLBACK');
+                 return res.status(409).json({ error: `O identificador ${identifier} já está cadastrado em nossa base.` });
+            }
+
+            // Cria o novo cliente
+            const newClientResult = await clientDB.query(
+                'INSERT INTO customers (name, address, identifier) VALUES ($1, $2, $3) RETURNING id',
+                [customerName, address, identifier]
+            );
+            finalClientId = newClientResult.rows[0].id;
+            console.log(`Novo cliente ID ${finalClientId} criado: ${customerName}`);
+
+        } else {
+            // 3. Lógica de Cliente EXISTENTE (clientId foi fornecido)
+            const existingClient = await clientDB.query(
+                'SELECT id FROM customers WHERE id = $1',
+                [clientId]
+            );
+            if (existingClient.rows.length === 0) {
+                await clientDB.query('ROLLBACK');
+                return res.status(404).json({ error: 'Cliente existente não encontrado com o ID fornecido.' });
+            }
+            // Se o cliente existe, finalClientId já é o clientId que veio na requisição
         }
 
-        // 2. Insere o novo ticket com approved=false e assigned_to=null (PENDENTE)
-        const result = await pool.query(
+        // 4. Insere o novo ticket com approved=false e assigned_to=null (PENDENTE)
+        const result = await clientDB.query(
             `INSERT INTO tickets 
              (title, description, priority, customer_id, customer_name, customer_address, requested_by, approved, assigned_to) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, false, NULL) RETURNING *`,
@@ -136,17 +172,23 @@ app.post('/ticket', async (req, res) => {
                 title, 
                 description, 
                 priority, 
-                clientId, 
-                client.name, 
-                client.address, 
+                finalClientId, // ID do cliente (novo ou existente)
+                customerName, // Nome fornecido
+                address,      // Endereço fornecido
                 requestedBy 
             ]
         );
 
+        await clientDB.query('COMMIT'); // Finaliza a transação com sucesso
         res.status(201).json({ ticket: result.rows[0] });
+
     } catch (err) {
-        console.error('Erro em POST /ticket:', err);
-        res.status(500).json({ error: 'Erro ao criar ticket', details: err.message });
+        await clientDB.query('ROLLBACK'); // Desfaz tudo em caso de erro
+        console.error('Erro em POST /ticket (Transação):', err);
+        // Exibe uma mensagem de erro mais amigável, a menos que seja um erro conhecido (como 409)
+        res.status(500).json({ error: 'Erro interno do servidor ao criar ticket. Tente novamente.', details: err.message });
+    } finally {
+        clientDB.release();
     }
 });
 
@@ -193,38 +235,44 @@ app.put('/tickets/:id/approve', async (req, res) => {
             return res.status(404).json({ error: 'Ticket não encontrado.' });
         }
 
-        // 2. Busca o fcm_token do técnico
-        const techRes = await client.query(
-            'SELECT fcm_token, name FROM users WHERE id = $1',
-            [assigned_to]
-        );
-        const tech = techRes.rows[0];
+        // 2. Busca o fcm_token do técnico (somente se a lib firebase existir)
         let notification_sent = false;
 
-        // 3. Envia notificação FCM (O erro aqui não deve anular a aprovação do ticket no DB)
-        if (tech && tech.fcm_token) {
-            const message = {
-                token: tech.fcm_token,
-                notification: {
-                    title: '🛠 Novo chamado de instalação aprovado!',
-                    body: `Cliente: ${ticket.customer_name}, Endereço: ${ticket.customer_address}`
-                },
-                data: {
-                    ticket_id: ticket.id.toString(),
-                    action: 'new_ticket'
+        if (adminFirebase) {
+             const techRes = await client.query(
+                'SELECT fcm_token, name FROM users WHERE id = $1',
+                [assigned_to]
+            );
+            const tech = techRes.rows[0];
+
+            // 3. Envia notificação FCM (O erro aqui não deve anular a aprovação do ticket no DB)
+            if (tech && tech.fcm_token) {
+                const message = {
+                    token: tech.fcm_token,
+                    notification: {
+                        title: '🛠 Novo chamado de instalação aprovado!',
+                        body: `Cliente: ${ticket.customer_name}, Endereço: ${ticket.customer_address}`
+                    },
+                    data: {
+                        ticket_id: ticket.id.toString(),
+                        action: 'new_ticket'
+                    }
+                };
+                try {
+                    await adminFirebase.messaging().send(message); 
+                    console.log(`Notificação enviada com sucesso para o técnico ID ${assigned_to}`);
+                    notification_sent = true;
+                } catch (fcmError) {
+                    // Loga o erro, mas a transação do DB continua para o COMMIT
+                    console.error(`Falha ao enviar notificação FCM para o técnico ID ${assigned_to}:`, fcmError.message);
                 }
-            };
-            try {
-                await adminFirebase.messaging().send(message); 
-                console.log(`Notificação enviada com sucesso para o técnico ID ${assigned_to}`);
-                notification_sent = true;
-            } catch (fcmError) {
-                 // Loga o erro, mas a transação do DB continua para o COMMIT
-                console.error(`Falha ao enviar notificação FCM para o técnico ID ${assigned_to}:`, fcmError.message);
+            } else {
+                console.warn(`Token FCM não encontrado ou inválido para o técnico ID ${assigned_to}`);
             }
         } else {
-            console.warn(`Token FCM não encontrado ou inválido para o técnico ID ${assigned_to}`);
+            console.warn('Módulo Firebase não carregado. Pulando notificação FCM.');
         }
+
 
         await client.query('COMMIT');
         res.json({ ticket, notification_sent });

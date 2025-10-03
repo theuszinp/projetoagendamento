@@ -24,7 +24,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final _formKey = GlobalKey<FormState>();
   
   // Variáveis CRÍTICAS para a API
-  int? _clientId; // ID numérico retornado pela busca (OPCIONAL, agora permitimos cadastrar sem ID)
+  int? _clientId; // ID numérico retornado pela busca (OPCIONAL)
   String? _selectedPriority; // Prioridade do serviço (OBRIGATÓRIO para a API)
 
   // Controladores
@@ -111,13 +111,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       return;
     }
 
-    // 2. Validação da Prioridade (Continua obrigatória)
+    // 2. Validação dos campos obrigatórios que não usam o validador nativo do FormField
     if (_selectedPriority == null) {
       _showSnackBar('⚠️ A prioridade do agendamento é obrigatória.', Colors.red);
       return;
     }
     
-    // 3. Validação manual do nome e endereço (agora obrigatórios se o cliente não foi buscado)
     if (_customerNameController.text.trim().isEmpty) {
         _showSnackBar('⚠️ O Nome do Cliente é obrigatório.', Colors.red);
         return;
@@ -132,18 +131,21 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     });
 
     try {
-      // 🚨 CRÍTICO: Agora enviamos o clientId, o nome e o endereço no corpo.
-      // O back-end deve ser capaz de criar o ticket, mesmo que clientId seja null,
-      // usando o customerName e address.
-      final body = {
+      // Cria o mapa de dados básicos
+      final Map<String, dynamic> body = {
         'title': _titleController.text.trim(), 
         'description': _descriptionController.text.trim(),
         'priority': _selectedPriority, 
         'requestedBy': widget.requestedByUserId,
-        'clientId': _clientId, // Será null se o cliente não foi encontrado
         'customerName': _customerNameController.text.trim(), // Enviamos sempre o nome digitado/puxado
         'address': _addressController.text.trim(), // Enviamos sempre o endereço digitado/puxado
       };
+
+      // 🚨 CORREÇÃO CRÍTICA: Adiciona 'clientId' SOMENTE se ele NÃO for null.
+      // Isso evita o erro de validação do backend quando o cliente não é encontrado.
+      if (_clientId != null) {
+        body['clientId'] = _clientId;
+      }
 
       final response = await http.post(
         Uri.parse('$API_BASE_URL/ticket'),
@@ -251,7 +253,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // --- 2. DADOS DO CLIENTE (MANUAL OU AUTO) ---
               Text(
-                'Dados do Cliente (Manual ou Preenchido por Busca)',
+                'Dados do Cliente (Obrigatório)',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
@@ -268,8 +270,6 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   filled: _isClientDataReadOnly, // Realça se for automático
                   fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
                 ),
-                // O validador agora checa o campo no momento do submit,
-                // mas a validação de isEmpty foi movida para _submitTicket
                 validator: (value) {
                   // A validação de obrigatoriedade agora é feita no _submitTicket
                   return null;
