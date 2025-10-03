@@ -2,19 +2,37 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-// Importa a URL base definida em main.dart
-// (Presume-se que a constante API_BASE_URL está acessível ou definida)
+// URL base do seu backend
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
+
+// ----------------------------------------------------
+// MODELO DE USUÁRIO (TÉCNICO) - Criado para este arquivo
+// ----------------------------------------------------
+class User {
+  final int id;
+  final String name;
+  final String role; 
+
+  User({required this.id, required this.name, required this.role});
+
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] as int,
+      name: json['name'] as String,
+      role: json['role'] as String,
+    );
+  }
+}
+// ----------------------------------------------------
 
 class AdminDashboardScreen extends StatefulWidget {
   final String authToken;
-  // Adicionando o userId (admin_id) que será usado na aprovação
-  final int userId; 
+  final int userId; // ID do admin logado
 
   const AdminDashboardScreen({
     super.key, 
     required this.authToken,
-    required this.userId, // Agora a tela precisa receber o ID do admin logado
+    required this.userId,
   });
 
   @override
@@ -23,78 +41,121 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<dynamic> _tickets = [];
-  bool _isLoading = true;
+  List<User> _technicians = []; // Nova lista para os técnicos
+  bool _isLoadingTickets = true;
+  bool _isLoadingTechs = true;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+    // Inicia o carregamento de tickets e técnicos em paralelo
+    _fetchTechnicians();
     _fetchTickets();
   }
+  
+  // ----------------------------------------------------
+  // LÓGICA: BUSCAR TÉCNICOS (GET /users)
+  // ----------------------------------------------------
+  Future<void> _fetchTechnicians() async {
+    setState(() {
+      _isLoadingTechs = true;
+    });
 
-  // Função para buscar todos os tickets (GET /tickets)
+    try {
+      final url = Uri.parse('$API_BASE_URL/users');
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.authToken}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['users'] is List) {
+          final List<dynamic> userList = data['users'];
+          setState(() {
+            // Mapeia e filtra APENAS por usuários com role 'tech'
+            _technicians = userList
+                .map((json) => User.fromJson(json))
+                .where((user) => user.role == 'tech')
+                .toList();
+            _isLoadingTechs = false;
+          });
+        }
+      } else {
+        // Erro ao carregar técnicos
+        setState(() {
+          _errorMessage = 'Falha ao carregar técnicos. Código: ${response.statusCode}';
+          _isLoadingTechs = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Erro de rede ao carregar técnicos: $e';
+        _isLoadingTechs = false;
+      });
+      print('Erro ao buscar técnicos: $e');
+    }
+  }
+
+
+  // ----------------------------------------------------
+  // LÓGICA: BUSCAR TICKETS (GET /tickets)
+  // ----------------------------------------------------
   Future<void> _fetchTickets() async {
     setState(() {
-      _isLoading = true;
+      _isLoadingTickets = true;
       _errorMessage = null;
     });
 
     try {
-      // CORREÇÃO DA ROTA: de '/tickets/all' para '/tickets'
       final url = Uri.parse('$API_BASE_URL/tickets'); 
       final response = await http.get(
         url,
         headers: {
           'Content-Type': 'application/json',
-          // A autenticação JWT deve ser usada, mas aqui usamos o token como Bearer
           'Authorization': 'Bearer ${widget.authToken}', 
         },
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        // O backend retorna { tickets: [...] }, então precisamos extrair a lista
         setState(() {
-          _tickets = data['tickets'] ?? []; // Garante que a lista seja extraída corretamente
-          _isLoading = false;
+          _tickets = data['tickets'] ?? [];
+          _isLoadingTickets = false;
         });
       } else {
-        // Tenta decodificar o erro, que agora deve ser JSON
         final errorData = json.decode(response.body);
         setState(() {
           _errorMessage = errorData['error'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}';
-          _isLoading = false;
+          _isLoadingTickets = false;
         });
       }
     } catch (e) {
-      // Erros de conexão (DNS, timeout, etc.)
       setState(() {
         _errorMessage = 'Erro de rede ou servidor: $e';
-        _isLoading = false;
+        _isLoadingTickets = false;
       });
       print('Erro ao buscar tickets: $e');
     }
   }
 
-  // A função de aprovar no backend agora exige assigned_to e admin_id
-  Future<void> _manageTicket(String ticketId) async {
-    // Usaremos um valor placeholder por enquanto, mas ele deve ser substituído pelo ID do técnico real.
-    // É VITAL que assigned_to seja um ID válido de um técnico/usuário no seu DB
-    final placeholderAssignedToId = 2; // Substitua pelo ID de um técnico de teste
 
-    // Usa o ID do admin logado
-    final adminId = widget.userId; 
-
-    await _showAssignmentDialog(ticketId, adminId, placeholderAssignedToId);
-  }
-
-  Future<void> _showAssignmentDialog(String ticketId, int adminId, int assignedToId) async {
-    // Implementação de um diálogo real para selecionar o técnico (necessário para o backend)
-    // Para simplificar e testar a API, chamaremos a aprovação diretamente com o placeholder.
-
-    // APROVAÇÃO REAL (PUT /tickets/:id/approve)
+  // ----------------------------------------------------
+  // LÓGICA: GERENCIAR TICKET (PUT /tickets/:id/approve)
+  // ----------------------------------------------------
+  Future<void> _manageTicket({
+    required String ticketId, 
+    required int adminId, 
+    required int assignedToId,
+  }) async {
+    
+    // Mensagem de feedback inicial
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Aprovando ticket e atribuindo ao técnico ID $assignedToId...')),
+      SnackBar(content: Text('Aprovando e atribuindo ticket #${ticketId} ao técnico ID $assignedToId...')),
     );
 
     try {
@@ -105,7 +166,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${widget.authToken}',
         },
-        // Dados exigidos pelo backend: assigned_to e admin_id
         body: json.encode({
           'admin_id': adminId,
           'assigned_to': assignedToId,
@@ -113,13 +173,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       );
 
       if (response.statusCode == 200) {
-        // Sucesso: atualiza a lista de tickets
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ticket aprovado e atribuído com sucesso!')),
         );
-        _fetchTickets(); // Recarrega a lista para mostrar a mudança de status
+        _fetchTickets(); // Recarrega a lista para mostrar a mudança
       } else {
-        // Erro no gerenciamento
         final errorData = json.decode(response.body);
         throw Exception(errorData['error'] ?? 'Falha ao gerenciar ticket. Código: ${response.statusCode}');
       }
@@ -131,13 +189,129 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  // ----------------------------------------------------
+  // UI: DIALOG DE APROVAÇÃO COM DROPDOWN
+  // ----------------------------------------------------
+  Future<void> _showAssignmentDialog(Map<String, dynamic> ticket) async {
+    User? selectedTech; 
 
-  // Constrói a UI para um único item da lista
+    // Se a lista de técnicos ainda não carregou, avisa e cancela
+    if (_isLoadingTechs) {
+       ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Aguarde o carregamento dos técnicos.')),
+        );
+      return;
+    }
+    
+    // Filtra técnicos que já têm o ID atribuído para pré-selecionar no dropdown, se houver
+    if (ticket['assigned_to'] != null) {
+      try {
+        selectedTech = _technicians.firstWhere(
+          (t) => t.id == ticket['assigned_to'],
+        );
+      } catch (_) {
+        // Se o ID atribuído não estiver na lista atual de técnicos
+        selectedTech = null;
+      }
+    }
+
+
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Atribuir Técnico e Aprovar'),
+          content: StatefulBuilder( // Permite atualizar o Dropdown no Dialog
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Ticket # ${ticket['id']} - Cliente: ${ticket['customer_name']}'),
+                  const SizedBox(height: 15),
+                  const Text('Selecione o Técnico:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 5),
+                  // Dropdown para seleção do técnico
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<User>(
+                        value: selectedTech,
+                        hint: const Text('Escolha um técnico'),
+                        isExpanded: true,
+                        items: _technicians.map((User tech) {
+                          return DropdownMenuItem<User>(
+                            value: tech,
+                            child: Text(tech.name),
+                          );
+                        }).toList(),
+                        onChanged: (User? newValue) {
+                          setState(() {
+                            selectedTech = newValue;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  if (_technicians.isEmpty)
+                     const Padding(
+                      padding: EdgeInsets.only(top: 10.0),
+                      child: Text('Nenhum técnico encontrado no banco de dados.', style: TextStyle(color: Colors.red, fontSize: 14)),
+                    )
+                  else if (selectedTech == null) 
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: Text('Selecione o técnico para liberar a aprovação.', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                    ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+              ),
+              // O botão de aprovar só é habilitado se um técnico for selecionado E houver técnicos.
+              onPressed: selectedTech != null && _technicians.isNotEmpty
+                  ? () {
+                      Navigator.of(context).pop();
+                      _manageTicket(
+                        ticketId: ticket['id'].toString(), 
+                        adminId: widget.userId,
+                        assignedToId: selectedTech!.id, // Envia o ID do técnico
+                      );
+                    }
+                  : null, // Desabilitado se selectedTech for null ou não houver técnicos
+              child: const Text('Aprovar e Atribuir'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+  // ----------------------------------------------------
+  // UI: ITEM DA LISTA AJUSTADO
+  // ----------------------------------------------------
   Widget _buildTicketItem(Map<String, dynamic> ticket) {
-    // Usamos a coluna 'approved' do DB para determinar o status
     final isApproved = ticket['approved'] == true;
     final isAssigned = ticket['assigned_to'] != null;
-
+    final assignedToId = ticket['assigned_to'];
+    
+    // Define o status e a cor
     String statusText = 'PENDENTE';
     Color statusColor = Colors.orange.shade700;
 
@@ -146,14 +320,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       statusColor = Colors.green.shade700;
     } else if (isApproved && !isAssigned) {
       statusText = 'APROVADO (SEM TÉCNICO)';
-      statusColor = Colors.lightGreen.shade700;
+      statusColor = Colors.lightBlue.shade700;
     }
-    // Reprovação precisa de uma coluna 'reproved' no DB. Por enquanto, 
-    // se não for aprovado, é PENDENTE.
-
+    
+    // Busca o nome do técnico
+    String assignedTechName = 'Ninguém';
+    if (assignedToId != null) {
+        final tech = _technicians.firstWhere(
+            (t) => t.id == assignedToId, 
+            orElse: () => User(id: -1, name: 'ID #$assignedToId (Desconhecido)', role: 'tech')
+        );
+        assignedTechName = tech.name;
+    }
+    
     final ticketId = ticket['id'].toString();
 
-    // Formata a data para melhor visualização (usamos 'created_at' do DB)
+    // Formata a data
     String date = 'Data indisponível';
     if (ticket.containsKey('created_at')) {
       try {
@@ -176,9 +358,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Ticket #$ticketId: ${ticket['title']}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Ticket #$ticketId: ${ticket['title']}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -197,21 +381,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Text('Cliente: ${ticket['customer_name'] ?? 'N/A'}'),
             Text('Endereço: ${ticket['customer_address'] ?? 'N/A'}'),
             Text('Prioridade: ${ticket['priority'] ?? 'N/A'}'),
-            Text('Solicitado por: ${ticket['requested_by'] ?? 'N/A'}'),
-            Text('Atribuído a: ${ticket['assigned_to'] ?? 'Ninguém'}'),
+            Text('Atribuído a: $assignedTechName'),
             Text('Criação: $date'),
             const SizedBox(height: 12),
+            
             // Botões de Ação, visíveis apenas se AINDA não estiver aprovado
             if (!isApproved)
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Reprovar: Você precisaria de uma rota PUT /tickets/:id/reprove no backend,
-                  // que faria um UPDATE setando 'approved=false' (ou adicionaria uma coluna 'reproved=true')
                   OutlinedButton.icon(
                     icon: const Icon(Icons.close, color: Colors.red),
                     label: const Text('Reprovar', style: TextStyle(color: Colors.red)),
-                    // Desabilitei o Reprovar pois a rota no backend não suporta reprovação
+                    // O Reprovar está desabilitado, pois você precisaria de uma rota específica no backend
                     onPressed: null, 
                   ),
                   const SizedBox(width: 10),
@@ -223,7 +405,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       backgroundColor: Colors.green.shade700,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    onPressed: () => _manageTicket(ticketId), // Chama a função que vai aprovar
+                    // Chama o Dialog de Atribuição
+                    onPressed: (_isLoadingTechs || _technicians.isEmpty) 
+                      ? null // Desabilitado se estiver carregando técnicos ou se não houver nenhum
+                      : () => _showAssignmentDialog(ticket), 
                   ),
                 ],
               ),
@@ -233,8 +418,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  // ----------------------------------------------------
+  // UI: WIDGET PRINCIPAL
+  // ----------------------------------------------------
   @override
   Widget build(BuildContext context) {
+    // Verifica o estado geral de carregamento
+    final isOverallLoading = _isLoadingTickets || _isLoadingTechs;
+    final loadingMessage = _isLoadingTickets ? 'Carregando Tickets...' : 'Carregando Técnicos...';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Painel de Administração'),
@@ -243,13 +435,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _fetchTickets,
-            tooltip: 'Recarregar Tickets',
+            onPressed: () {
+              _fetchTechnicians();
+              _fetchTickets();
+            },
+            tooltip: 'Recarregar Tudo',
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: isOverallLoading
+          ? Center(child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 10),
+                Text(loadingMessage),
+              ],
+            ))
           : _errorMessage != null
               ? Center(
                   child: Padding(
@@ -266,7 +468,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                         const SizedBox(height: 20),
                         ElevatedButton(
-                          onPressed: _fetchTickets,
+                          onPressed: () {
+                            _fetchTechnicians();
+                            _fetchTickets();
+                          },
                           child: const Text('Tentar Novamente'),
                         ),
                       ],

@@ -327,7 +327,7 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 30),
 
               // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR)
-              if (userRole == 'seller') // Removido 'admin' daqui, pois ele não chega nesta tela
+              if (userRole == 'Vendedor') // Removido 'admin' daqui, pois ele não chega nesta tela
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10.0),
                   child: ElevatedButton.icon(
