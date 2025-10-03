@@ -3,15 +3,19 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 // Importa a URL base definida em main.dart
-// (Presume-se que a constante API_BASE_URL está acessível ou definida em main.dart)
+// (Presume-se que a constante API_BASE_URL está acessível ou definida)
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
-// Se você definiu em main.dart: import 'main.dart';
-// E se a variável é pública: const String API_BASE_URL = MainApp.API_BASE_URL;
 
 class AdminDashboardScreen extends StatefulWidget {
   final String authToken;
+  // Adicionando o userId (admin_id) que será usado na aprovação
+  final int userId; 
 
-  const AdminDashboardScreen({super.key, required this.authToken});
+  const AdminDashboardScreen({
+    super.key, 
+    required this.authToken,
+    required this.userId, // Agora a tela precisa receber o ID do admin logado
+  });
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
@@ -28,7 +32,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _fetchTickets();
   }
 
-  // Função para buscar todos os tickets (GET /tickets/all)
+  // Função para buscar todos os tickets (GET /tickets)
   Future<void> _fetchTickets() async {
     setState(() {
       _isLoading = true;
@@ -36,26 +40,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
 
     try {
-      final url = Uri.parse('$API_BASE_URL/tickets/all');
+      // CORREÇÃO DA ROTA: de '/tickets/all' para '/tickets'
+      final url = Uri.parse('$API_BASE_URL/tickets'); 
       final response = await http.get(
         url,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${widget.authToken}',
+          // A autenticação JWT deve ser usada, mas aqui usamos o token como Bearer
+          'Authorization': 'Bearer ${widget.authToken}', 
         },
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        // O backend retorna { tickets: [...] }, então precisamos extrair a lista
         setState(() {
-          _tickets = data;
+          _tickets = data['tickets'] ?? []; // Garante que a lista seja extraída corretamente
           _isLoading = false;
         });
       } else {
-        // Se a API retornar um erro (ex: 401, 404, 500)
+        // Tenta decodificar o erro, que agora deve ser JSON
         final errorData = json.decode(response.body);
         setState(() {
-          _errorMessage = errorData['message'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}';
+          _errorMessage = errorData['error'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}';
           _isLoading = false;
         });
       }
@@ -69,11 +76,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  // Função para aprovar ou reprovar um ticket (PUT /tickets/:id/approve)
-  Future<void> _manageTicket(String ticketId, bool approve) async {
-    // Sinaliza ao usuário que a ação está em andamento (opcional, mas bom UX)
+  // A função de aprovar no backend agora exige assigned_to e admin_id
+  Future<void> _manageTicket(String ticketId) async {
+    // Usaremos um valor placeholder por enquanto, mas ele deve ser substituído pelo ID do técnico real.
+    // É VITAL que assigned_to seja um ID válido de um técnico/usuário no seu DB
+    final placeholderAssignedToId = 2; // Substitua pelo ID de um técnico de teste
+
+    // Usa o ID do admin logado
+    final adminId = widget.userId; 
+
+    await _showAssignmentDialog(ticketId, adminId, placeholderAssignedToId);
+  }
+
+  Future<void> _showAssignmentDialog(String ticketId, int adminId, int assignedToId) async {
+    // Implementação de um diálogo real para selecionar o técnico (necessário para o backend)
+    // Para simplificar e testar a API, chamaremos a aprovação diretamente com o placeholder.
+
+    // APROVAÇÃO REAL (PUT /tickets/:id/approve)
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(approve ? 'Aprovando ticket...' : 'Reprovando ticket...')),
+      SnackBar(content: Text('Aprovando ticket e atribuindo ao técnico ID $assignedToId...')),
     );
 
     try {
@@ -84,19 +105,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${widget.authToken}',
         },
-        body: json.encode({'approve': approve}), // Envia true ou false
+        // Dados exigidos pelo backend: assigned_to e admin_id
+        body: json.encode({
+          'admin_id': adminId,
+          'assigned_to': assignedToId,
+        }), 
       );
 
       if (response.statusCode == 200) {
         // Sucesso: atualiza a lista de tickets
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(approve ? 'Ticket aprovado com sucesso!' : 'Ticket reprovado com sucesso!')),
+          const SnackBar(content: Text('Ticket aprovado e atribuído com sucesso!')),
         );
         _fetchTickets(); // Recarrega a lista para mostrar a mudança de status
       } else {
         // Erro no gerenciamento
         final errorData = json.decode(response.body);
-        throw Exception(errorData['message'] ?? 'Falha ao gerenciar ticket. Código: ${response.statusCode}');
+        throw Exception(errorData['error'] ?? 'Falha ao gerenciar ticket. Código: ${response.statusCode}');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -106,21 +131,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+
   // Constrói a UI para um único item da lista
   Widget _buildTicketItem(Map<String, dynamic> ticket) {
-    final status = ticket['status'] ?? 'PENDENTE';
-    final statusColor = status == 'APROVADO' ? Colors.green.shade700 : (status == 'REPROVADO' ? Colors.red.shade700 : Colors.orange.shade700);
-    final statusText = status.toUpperCase();
+    // Usamos a coluna 'approved' do DB para determinar o status
+    final isApproved = ticket['approved'] == true;
+    final isAssigned = ticket['assigned_to'] != null;
+
+    String statusText = 'PENDENTE';
+    Color statusColor = Colors.orange.shade700;
+
+    if (isApproved && isAssigned) {
+      statusText = 'APROVADO / ATRIBUÍDO';
+      statusColor = Colors.green.shade700;
+    } else if (isApproved && !isAssigned) {
+      statusText = 'APROVADO (SEM TÉCNICO)';
+      statusColor = Colors.lightGreen.shade700;
+    }
+    // Reprovação precisa de uma coluna 'reproved' no DB. Por enquanto, 
+    // se não for aprovado, é PENDENTE.
+
     final ticketId = ticket['id'].toString();
 
-    // Formata a data para melhor visualização (se o campo 'data' existir)
+    // Formata a data para melhor visualização (usamos 'created_at' do DB)
     String date = 'Data indisponível';
-    if (ticket.containsKey('data')) {
+    if (ticket.containsKey('created_at')) {
       try {
-        final dateTime = DateTime.parse(ticket['data']);
+        final dateTime = DateTime.parse(ticket['created_at']);
         date = '${dateTime.day}/${dateTime.month}/${dateTime.year} às ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
       } catch (_) {
-        date = ticket['data'].toString();
+        date = ticket['created_at'].toString();
       }
     }
 
@@ -137,7 +177,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Ticket #$ticketId',
+                  'Ticket #$ticketId: ${ticket['title']}',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 Container(
@@ -153,31 +193,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text('Usuário: ${ticket['userName'] ?? 'Desconhecido'} (${ticket['userId'] ?? 'N/A'})'),
-            Text('Serviço: ${ticket['serviceType'] ?? 'Não especificado'}'),
-            Text('Data e Hora: $date'),
+            const SizedBox(height: 4),
+            Text('Cliente: ${ticket['customer_name'] ?? 'N/A'}'),
+            Text('Endereço: ${ticket['customer_address'] ?? 'N/A'}'),
+            Text('Prioridade: ${ticket['priority'] ?? 'N/A'}'),
+            Text('Solicitado por: ${ticket['requested_by'] ?? 'N/A'}'),
+            Text('Atribuído a: ${ticket['assigned_to'] ?? 'Ninguém'}'),
+            Text('Criação: $date'),
             const SizedBox(height: 12),
-            // Botões de Ação, visíveis apenas se o status não for final
-            if (status == 'PENDENTE')
+            // Botões de Ação, visíveis apenas se AINDA não estiver aprovado
+            if (!isApproved)
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  // Reprovar: Você precisaria de uma rota PUT /tickets/:id/reprove no backend,
+                  // que faria um UPDATE setando 'approved=false' (ou adicionaria uma coluna 'reproved=true')
                   OutlinedButton.icon(
                     icon: const Icon(Icons.close, color: Colors.red),
                     label: const Text('Reprovar', style: TextStyle(color: Colors.red)),
-                    onPressed: () => _manageTicket(ticketId, false),
+                    // Desabilitei o Reprovar pois a rota no backend não suporta reprovação
+                    onPressed: null, 
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.check, color: Colors.white),
-                    label: const Text('Aprovar'),
+                    label: const Text('Aprovar e Atribuir'),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: Colors.white,
                       backgroundColor: Colors.green.shade700,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    onPressed: () => _manageTicket(ticketId, true),
+                    onPressed: () => _manageTicket(ticketId), // Chama a função que vai aprovar
                   ),
                 ],
               ),
