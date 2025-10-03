@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-// CORREÇÃO FINALIZADA: Importando o pacote conforme definido no pubspec.yaml
 import 'package:lucide_icons_flutter/lucide_icons.dart'; 
 
 // Substitua pelo seu BASE_URL
@@ -25,7 +24,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final _formKey = GlobalKey<FormState>();
   
   // Variáveis CRÍTICAS para a API
-  int? _clientId; // ID numérico retornado pela busca (OBRIGATÓRIO para a API)
+  int? _clientId; // ID numérico retornado pela busca (OPCIONAL, agora permitimos cadastrar sem ID)
   String? _selectedPriority; // Prioridade do serviço (OBRIGATÓRIO para a API)
 
   // Controladores
@@ -39,6 +38,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   bool _isSearching = false;
 
   final List<String> _priorities = ['Baixa', 'Média', 'Alta'];
+  
+  // Novo estado: Se o nome e endereço foram preenchidos pela busca, eles ficam somente leitura.
+  bool _isClientDataReadOnly = false;
 
   @override
   void dispose() {
@@ -63,6 +65,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     setState(() {
       _isSearching = true;
       _clientId = null; // Reseta o ID do cliente
+      _isClientDataReadOnly = false; // Permite edição enquanto busca
       _customerNameController.clear();
       _addressController.clear();
     });
@@ -75,17 +78,19 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         final data = jsonDecode(response.body);
         
         setState(() {
-          // 🚨 CRÍTICO: Armazena o ID para o POST /ticket
+          // Cliente encontrado: preenche os campos e os torna somente leitura
           _clientId = data['id']; 
           _customerNameController.text = data['name'] ?? 'Cliente sem nome';
           _addressController.text = data['address'] ?? 'Endereço não fornecido';
+          _isClientDataReadOnly = true; 
         });
         _showSnackBar('✅ Cliente encontrado com sucesso!', Colors.green);
       } else {
-        // Se o cliente não for encontrado (404), limpa os campos para evitar confusão.
+        // Cliente NÃO encontrado: limpa e mantém campos editáveis.
         _customerNameController.clear();
         _addressController.clear();
-        _showSnackBar('⚠️ Cliente não encontrado ou erro na busca.', Colors.red);
+        _isClientDataReadOnly = false; 
+        _showSnackBar('⚠️ Cliente não encontrado. Preencha os dados manualmente.', Colors.red);
       }
     } catch (e) {
       _showSnackBar('❌ Erro de conexão ao buscar cliente.', Colors.deepOrange);
@@ -106,14 +111,20 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       return;
     }
 
-    // 2. Validação dos IDs e Prioridade
-    if (_clientId == null) {
-      _showSnackBar('⚠️ Por favor, busque e selecione um cliente válido primeiro.', Colors.red);
-      return;
-    }
+    // 2. Validação da Prioridade (Continua obrigatória)
     if (_selectedPriority == null) {
       _showSnackBar('⚠️ A prioridade do agendamento é obrigatória.', Colors.red);
       return;
+    }
+    
+    // 3. Validação manual do nome e endereço (agora obrigatórios se o cliente não foi buscado)
+    if (_customerNameController.text.trim().isEmpty) {
+        _showSnackBar('⚠️ O Nome do Cliente é obrigatório.', Colors.red);
+        return;
+    }
+    if (_addressController.text.trim().isEmpty) {
+        _showSnackBar('⚠️ O Endereço de Instalação é obrigatório.', Colors.red);
+        return;
     }
 
     setState(() {
@@ -121,13 +132,17 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     });
 
     try {
-      // 🚨 CRÍTICO: Ajusta o corpo para corresponder aos campos OBRIGATÓRIOS do server.js
+      // 🚨 CRÍTICO: Agora enviamos o clientId, o nome e o endereço no corpo.
+      // O back-end deve ser capaz de criar o ticket, mesmo que clientId seja null,
+      // usando o customerName e address.
       final body = {
         'title': _titleController.text.trim(), 
         'description': _descriptionController.text.trim(),
         'priority': _selectedPriority, 
-        'requestedBy': widget.requestedByUserId, // ID do Vendedor logado
-        'clientId': _clientId, // ID numérico do cliente
+        'requestedBy': widget.requestedByUserId,
+        'clientId': _clientId, // Será null se o cliente não foi encontrado
+        'customerName': _customerNameController.text.trim(), // Enviamos sempre o nome digitado/puxado
+        'address': _addressController.text.trim(), // Enviamos sempre o endereço digitado/puxado
       };
 
       final response = await http.post(
@@ -162,6 +177,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     setState(() {
       _clientId = null;
       _selectedPriority = null;
+      _isClientDataReadOnly = false;
     });
     _titleController.clear();
     _customerNameController.clear();
@@ -199,9 +215,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              // --- 1. SEÇÃO DE BUSCA (CRÍTICA) ---
+              // --- 1. SEÇÃO DE BUSCA (OPCIONAL) ---
               Text(
-                'Buscar Cliente por Identificador',
+                'Buscar Cliente por Identificador (Opcional)',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
@@ -213,13 +229,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                     child: TextFormField(
                       controller: _identifierController,
                       keyboardType: TextInputType.text,
-                      decoration: _buildInputDecoration('CPF/CNPJ do Cliente', LucideIcons.scan),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'O CPF/CNPJ é obrigatório para busca.';
-                        }
-                        return null;
-                      },
+                      decoration: _buildInputDecoration('CPF/CNPJ do Cliente (Opcional)', LucideIcons.scan),
+                      // Removendo o validador para tornar o campo opcional
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -238,7 +249,55 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               ),
               const SizedBox(height: 30),
 
-              // --- 2. DADOS DO TICKET ---
+              // --- 2. DADOS DO CLIENTE (MANUAL OU AUTO) ---
+              Text(
+                'Dados do Cliente (Manual ou Preenchido por Busca)',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              ),
+              const Divider(color: Colors.grey),
+              const SizedBox(height: 15),
+
+              // Campo Nome do Cliente (Agora pode ser editável)
+              TextFormField(
+                controller: _customerNameController,
+                readOnly: _isClientDataReadOnly, // Somente leitura se encontrado na busca
+                decoration: _buildInputDecoration(
+                  _isClientDataReadOnly ? 'Nome Completo (Preenchido Automaticamente)' : 'Nome Completo (Obrigatório)', 
+                  LucideIcons.user
+                ).copyWith(
+                  filled: _isClientDataReadOnly, // Realça se for automático
+                  fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
+                ),
+                // O validador agora checa o campo no momento do submit,
+                // mas a validação de isEmpty foi movida para _submitTicket
+                validator: (value) {
+                  // A validação de obrigatoriedade agora é feita no _submitTicket
+                  return null;
+                },
+              ),
+              const SizedBox(height: 15),
+
+              // Campo Endereço (Agora pode ser editável)
+              TextFormField(
+                controller: _addressController,
+                readOnly: _isClientDataReadOnly, // Somente leitura se encontrado na busca
+                maxLines: 3,
+                keyboardType: TextInputType.streetAddress,
+                decoration: _buildInputDecoration(
+                  _isClientDataReadOnly ? 'Endereço (Preenchido Automaticamente)' : 'Endereço de Instalação (Obrigatório)', 
+                  LucideIcons.mapPin
+                ).copyWith(
+                  filled: _isClientDataReadOnly, // Realça se for automático
+                  fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
+                ),
+                validator: (value) {
+                  // A validação de obrigatoriedade agora é feita no _submitTicket
+                  return null;
+                },
+              ),
+              const SizedBox(height: 30),
+
+              // --- 3. DADOS DO TICKET ---
               Text(
                 'Detalhes do Agendamento',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
@@ -294,45 +353,6 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   }
                   return null;
                 },
-              ),
-              const SizedBox(height: 30),
-
-              // --- 3. DADOS DO CLIENTE PREENCHIDOS PELA BUSCA ---
-              Text(
-                'Dados do Cliente (Preenchimento Automático)',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
-              ),
-              const Divider(color: Colors.grey),
-              const SizedBox(height: 15),
-
-              // Campo Nome do Cliente (ReadOnly)
-              TextFormField(
-                controller: _customerNameController,
-                readOnly: true, // Deve ser preenchido pela busca
-                // CORREÇÃO: Usando 'LucideIcons.user' em vez de 'LucideIcons.person'
-                decoration: _buildInputDecoration('Nome Completo (Preenchido Automaticamente)', LucideIcons.user).copyWith(
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                ),
-                validator: (value) {
-                  if (_clientId == null) {
-                    return 'Busque um cliente válido antes de registrar.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 15),
-
-              // Campo Endereço (ReadOnly)
-              TextFormField(
-                controller: _addressController,
-                readOnly: true, // Deve ser preenchido pela busca
-                maxLines: 3,
-                keyboardType: TextInputType.streetAddress,
-                decoration: _buildInputDecoration('Endereço de Instalação (Preenchido Automaticamente)', LucideIcons.mapPin).copyWith(
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                ),
               ),
               const SizedBox(height: 30),
 
