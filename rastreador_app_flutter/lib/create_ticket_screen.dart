@@ -139,10 +139,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         'requestedBy': widget.requestedByUserId,
         'customerName': _customerNameController.text.trim(), // Enviamos sempre o nome digitado/puxado
         'address': _addressController.text.trim(), // Enviamos sempre o endereço digitado/puxado
+        // 🚨 CORREÇÃO: Adiciona o identificador (CPF/CNPJ) à requisição
+        // O backend precisa disso para criar um novo cliente se o 'clientId' for nulo.
+        'identifier': _identifierController.text.trim(),
       };
 
-      // 🚨 CORREÇÃO CRÍTICA: Adiciona 'clientId' SOMENTE se ele NÃO for null.
-      // Isso evita o erro de validação do backend quando o cliente não é encontrado.
+      // Adiciona 'clientId' SOMENTE se ele NÃO for nulo (cliente existente).
       if (_clientId != null) {
         body['clientId'] = _clientId;
       }
