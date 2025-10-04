@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 // Nota: Assumimos que essas classes existem e estão em PascalCase
 import 'create_ticket_screen.dart'; 
 import 'techdashboardscreen.dart'; 
-import 'admindashboardscreen.dart'; // Importação do Dashboard do Admin
+import 'admindashboardscreen.dart'; 
 
 // URL base do seu backend no Render
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
@@ -107,7 +107,7 @@ class _LoginPageState extends State<LoginPage> {
                 // CORREÇÃO: Passando o userId, conforme exigido pelo construtor AdminDashboardScreen
                 builder: (context) => AdminDashboardScreen(
                   authToken: token,
-                  userId: userId, // <<< NOVO PARAMETRO ADICIONADO AQUI
+                  userId: userId, 
                 ), 
               ),
             );
@@ -268,7 +268,7 @@ class _LoginPageState extends State<LoginPage> {
 
 // ===============================================
 // TELA DE HOME (MENU PRINCIPAL)
-// Exclusiva para Vendedor ('seller') e Técnico ('tech')
+// Exclusiva para Vendedor ('vendedor') e Técnico ('tech')
 // ===============================================
 
 class HomeScreen extends StatelessWidget {
@@ -281,14 +281,15 @@ class HomeScreen extends StatelessWidget {
     // Extração dos dados do usuário logado
     String userName = userData['name'] ?? 'Usuário Desconhecido';
     String userRole = userData['role'] ?? 'Sem Cargo';
+    
+    // 💡 CORREÇÃO APLICADA AQUI: Normalizamos para minúsculas para garantir a checagem
+    final String normalizedRole = userRole.toLowerCase(); 
+
     // Garante que userId seja um inteiro, que é o esperado para a rota
     int userId = (userData['id'] is int) ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0;
     String userEmail = userData['email'] ?? 'Sem E-mail';
     String rawData = jsonEncode(userData); // Para mostrar no debug
     
-    // O token não é estritamente necessário na HomeScreen, mas é extraído por completude
-    // String authToken = userData['token'] ?? 'fake-token-do-db'; 
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bem-Vindo(a)'),
@@ -327,7 +328,8 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 30),
 
               // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR)
-              if (userRole == 'Vendedor') // Removido 'admin' daqui, pois ele não chega nesta tela
+              // Agora checa a role normalizada para 'vendedor'
+              if (normalizedRole == 'vendedor') 
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10.0),
                   child: ElevatedButton.icon(
@@ -354,7 +356,8 @@ class HomeScreen extends StatelessWidget {
                 
 
               // 🚨 BOTÃO DE VISUALIZAÇÃO DE CHAMADOS (TÉCNICO)
-              if (userRole == 'tech')
+              // Agora checa a role normalizada para 'tech'
+              if (normalizedRole == 'tech')
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10.0),
                   child: ElevatedButton.icon(
@@ -378,11 +381,7 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                
-              // 🚨 BOTÃO DO ADMIN - REMOVIDO
-              // A lógica para admin foi movida para a LoginPage, 
-              // garantindo que ele não acesse a HomeScreen.
-                
+                        
               const SizedBox(height: 50),
 
               // Detalhes e Debug
