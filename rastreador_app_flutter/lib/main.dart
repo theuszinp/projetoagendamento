@@ -104,7 +104,7 @@ class _LoginPageState extends State<LoginPage> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                // CORREÇÃO: Passando o userId, conforme exigido pelo construtor AdminDashboardScreen
+                // Passando o userId, conforme exigido pelo construtor AdminDashboardScreen
                 builder: (context) => AdminDashboardScreen(
                   authToken: token,
                   userId: userId, 
@@ -112,7 +112,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
             );
           } else {
-            // Vendedor ('seller') e Técnico ('tech') vão para a HomeScreen
+            // Vendedor ('seller' ou 'vendedor') e Técnico ('tech') vão para a HomeScreen
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => HomeScreen(userData: data)),
@@ -268,7 +268,7 @@ class _LoginPageState extends State<LoginPage> {
 
 // ===============================================
 // TELA DE HOME (MENU PRINCIPAL)
-// Exclusiva para Vendedor ('vendedor') e Técnico ('tech')
+// Exclusiva para Vendedor ('vendedor' ou 'seller') e Técnico ('tech')
 // ===============================================
 
 class HomeScreen extends StatelessWidget {
@@ -282,7 +282,7 @@ class HomeScreen extends StatelessWidget {
     String userName = userData['name'] ?? 'Usuário Desconhecido';
     String userRole = userData['role'] ?? 'Sem Cargo';
     
-    // 💡 CORREÇÃO APLICADA AQUI: Normalizamos para minúsculas para garantir a checagem
+    // 💡 IMPORTANTE: Normalizamos para minúsculas para garantir que 'Seller' ou 'seller' funcione
     final String normalizedRole = userRole.toLowerCase(); 
 
     // Garante que userId seja um inteiro, que é o esperado para a rota
@@ -327,9 +327,9 @@ class HomeScreen extends StatelessWidget {
               Text('Você está logado como ${userRole.toUpperCase()}.', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 30),
 
-              // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR)
-              // Agora checa a role normalizada para 'vendedor'
-              if (normalizedRole == 'vendedor') 
+              // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR / SELLER)
+              // CORREÇÃO: Verifica se a role normalizada é 'vendedor' OU 'seller'
+              if (normalizedRole == 'vendedor' || normalizedRole == 'seller') 
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10.0),
                   child: ElevatedButton.icon(
