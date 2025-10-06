@@ -276,25 +276,34 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                         Text('Endereço: ${ticket.customerAddress}'),
                         const SizedBox(height: 4),
                         // Mostra o status atual
+                        // 🚀 NOVO WIDGET ROW COM EXPANDED E ALINHAMENTO CORRIGIDO
                         Row(
                           children: [
-                            Text(
-                              'Status: ${_getStatusText(ticket.status)}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getStatusColor(ticket.status),
+                            Expanded(
+                              child: Text(
+                                'Status: ${_getStatusText(ticket.status)}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _getStatusColor(ticket.status),
+                                ),
+                                overflow: TextOverflow.ellipsis, // corta texto longo com "..."
                               ),
                             ),
-                            const Spacer(),
-                            Text(
-                              'Prioridade: ${ticket.priority.toUpperCase()}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getPriorityColor(ticket.priority),
+                            const SizedBox(width: 8), // Pequeno espaço entre os textos
+                            Expanded(
+                              child: Text(
+                                'Prioridade: ${ticket.priority.toUpperCase()}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _getPriorityColor(ticket.priority),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.end, // alinha à direita pra ficar bonito
                               ),
                             ),
                           ],
                         ),
+                        // ----------------------------------------------------
                       ],
                     ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
