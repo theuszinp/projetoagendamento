@@ -1,4 +1,5 @@
 // TechDetailTicketScreen.dart
+
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -40,13 +41,29 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     // Evita múltiplas requisições
     if (_isProcessing) return; 
 
+    // 💡 ADICIONADO: Se for mudar para IN_PROGRESS, confirma a ação
+    if (newStatus == 'IN_PROGRESS') {
+        final bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Confirmar Início'),
+          content: Text('Deseja realmente iniciar o serviço do Ticket #${widget.ticket['id']} agora?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sim, Iniciar', style: TextStyle(color: Colors.blue))),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
     // Mensagem de confirmação para status 'COMPLETED'
     if (newStatus == 'COMPLETED') {
         final bool? confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Confirmar Conclusão'),
-          content: Text('Tem certeza que deseja marcar o Ticket #${widget.ticket['id']} como CONCLUÍDO?'),
+          content: Text('Tem certeza que deseja marcar o Ticket #${widget.ticket['id']} como CONCLUÍDO? Esta ação é final.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Não')),
             ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sim, Concluir', style: TextStyle(color: Colors.green))),
@@ -81,19 +98,18 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
           setState(() {
             _currentStatus = newStatus;
           });
-          _showSnackBar('Status atualizado para ${newStatus.replaceAll('_', ' ')}.', Colors.green);
+          _showSnackBar('Status atualizado para ${_getStatusText(newStatus)}.', Colors.green);
           
-          // Se for concluído, retorna para a lista principal para remover o item
-          if (newStatus == 'COMPLETED') {
-              Navigator.pop(context, true); 
-          }
+          // 🌟 CORREÇÃO FEITA AQUI: Retorna 'true' para a tela anterior
+          // para que a lista de tickets recarregue/filtre corretamente.
+          Navigator.pop(context, true); 
         }
       } else {
         final errorData = json.decode(response.body);
         _showSnackBar(errorData['error'] ?? 'Falha ao atualizar status.', Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Erro de rede: $e', Colors.deepOrange);
+      _showSnackBar('Erro de rede: Verifique sua conexão.', Colors.deepOrange);
       // ignore: avoid_print
       print('Erro de rede: $e');
     } finally {
@@ -107,6 +123,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
 
   void _showSnackBar(String message, Color color) {
     if (mounted) {
+      // Garante que o SnackBar seja exibido mesmo após um pop, se necessário.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: color),
       );
@@ -145,7 +162,6 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     required Color color, 
     required IconData icon
   }) {
-    final isCurrentStatus = _currentStatus == status;
     final isFinished = _currentStatus == 'COMPLETED' || _currentStatus == 'REJECTED';
 
     // REGRA ESPECÍFICA PARA O BOTÃO FINALIZAR: Só pode finalizar se estiver em IN_PROGRESS
@@ -163,7 +179,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
         isEnabled = isEnabled && canStart;
     } else {
         // Para qualquer outro status futuro
-        isEnabled = isEnabled && !isCurrentStatus;
+        isEnabled = isEnabled && (_currentStatus != status);
     }
     
     return ElevatedButton.icon(
@@ -192,88 +208,109 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
   Widget build(BuildContext context) {
     final ticket = widget.ticket;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Serviço #${ticket['id']} - Detalhes'),
-        backgroundColor: Colors.indigo.shade700,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Destaque do Status Atual
-            Container(
-              padding: const EdgeInsets.all(12),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: _getStatusColor(_currentStatus).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _getStatusColor(_currentStatus), width: 1.5),
-              ),
-              child: Text(
-                'STATUS ATUAL: ${_getStatusText(_currentStatus)}',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: _getStatusColor(_currentStatus),
+    return PopScope(
+      // O PopScope é usado para garantir que, se o ticket foi atualizado para IN_PROGRESS ou COMPLETED,
+      // e o usuário usar o botão de voltar padrão (do AppBar ou do celular), 
+      // a tela anterior (Dashboard) ainda force um refresh.
+      canPop: true, // Permite o pop padrão
+      onPopInvoked: (didPop) {
+        if (didPop) {
+          // Se o pop ocorreu (usuário clicou em voltar), retorna true SE o status foi alterado
+          // para garantir que a lista seja recarregada.
+          if (_currentStatus == 'COMPLETED' || _currentStatus == 'IN_PROGRESS') {
+            Navigator.pop(context, true);
+          } else {
+            // Se não houve alteração relevante, retorna null
+            Navigator.pop(context, null);
+          }
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Serviço #${ticket['id']} - Detalhes'),
+          backgroundColor: Colors.indigo.shade700,
+          foregroundColor: Colors.white,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. Destaque do Status Atual
+              Container(
+                padding: const EdgeInsets.all(12),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: _getStatusColor(_currentStatus).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _getStatusColor(_currentStatus), width: 1.5),
+                ),
+                child: Text(
+                  'STATUS ATUAL: ${_getStatusText(_currentStatus)}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: _getStatusColor(_currentStatus),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 25),
+              const SizedBox(height: 25),
 
-            // 2. Detalhes do Chamado
-            const Text('Detalhes do Chamado', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Divider(),
-            _buildDetailRow('Título', ticket['title']),
-            _buildDetailRow('Prioridade', ticket['priority']),
-            _buildDetailRow('Descrição', ticket['description'], isMultiline: true),
-            _buildDetailRow('Data de Criação', ticket['created_at'].toString().substring(0, 16)),
-            const SizedBox(height: 20),
-            
-            // 3. Detalhes do Cliente (CRUCIAL PARA O TÉCNICO)
-            const Text('Informações do Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Divider(),
-            _buildDetailRow('Nome', ticket['customer_name']),
-            _buildDetailRow('Endereço', ticket['customer_address'], isMultiline: true),
-            
-            // Linha mantida/ajustada para exibir o número do cliente
-            _buildDetailRow('Telefone', ticket['customer_phone'] ?? 'Não informado'), 
-            
-            // Linha REMOVIDA:
-            // _buildDetailRow('E-mail', ticket['customer_email'] ?? 'Não informado'), 
-            const SizedBox(height: 30),
+              // 2. Detalhes do Chamado
+              const Text('Detalhes do Chamado', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Divider(),
+              _buildDetailRow('Título', ticket['title']),
+              _buildDetailRow('Prioridade', ticket['priority']),
+              _buildDetailRow('Descrição', ticket['description'], isMultiline: true),
+              // 💡 Exibe a data formatada
+              _buildDetailRow('Data de Criação', 
+                ticket['created_at'] != null 
+                  ? DateTime.tryParse(ticket['created_at'].toString())?.toLocal().toString().substring(0, 16).replaceAll('-', '/') 
+                  : 'N/A'
+              ),
+              const SizedBox(height: 20),
+              
+              // 3. Detalhes do Cliente (CRUCIAL PARA O TÉCNICO)
+              const Text('Informações do Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Divider(),
+              _buildDetailRow('Nome', ticket['customer_name']),
+              _buildDetailRow('Endereço', ticket['customer_address'], isMultiline: true),
+              
+              // Linha para exibir o número do cliente
+              _buildDetailRow('Telefone', ticket['customer_phone'] ?? 'Não informado'), 
+              
+              const SizedBox(height: 30),
 
-            // 4. Ações do Técnico
-            const Text('Ações de Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Divider(),
+              // 4. Ações do Técnico
+              const Text('Ações de Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Divider(),
 
-            // Botão 1: Marcar como Em Andamento (IN_PROGRESS)
-            _buildActionButton(
-              label: _currentStatus == 'IN_PROGRESS' ? 'Em Andamento (Atual)' : 'Marcar como Em Andamento',
-              status: 'IN_PROGRESS',
-              color: Colors.orange.shade700,
-              icon: Icons.timer,
-            ),
-            const SizedBox(height: 10),
+              // Botão 1: Marcar como Em Andamento (IN_PROGRESS)
+              _buildActionButton(
+                label: _currentStatus == 'IN_PROGRESS' ? 'Em Andamento (Atual)' : 'Marcar como Em Andamento',
+                status: 'IN_PROGRESS',
+                color: Colors.orange.shade700,
+                icon: Icons.timer,
+              ),
+              const SizedBox(height: 10),
 
-            // Botão 2: Marcar como Concluído (COMPLETED)
-            _buildActionButton(
-              label: _currentStatus == 'COMPLETED' ? 'Concluído' : 'Finalizar Serviço',
-              status: 'COMPLETED',
-              color: Colors.green.shade700,
-              icon: Icons.done_all,
-            ),
-            
-            if (_currentStatus == 'REJECTED')
-                Padding(
-                  padding: const EdgeInsets.only(top: 20.0),
-                  child: Text('Este ticket foi reprovado pelo administrador. Nenhuma ação é necessária.', 
-                    style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold)),
-                ),
-          ],
+              // Botão 2: Marcar como Concluído (COMPLETED)
+              _buildActionButton(
+                label: _currentStatus == 'COMPLETED' ? 'Concluído' : 'Finalizar Serviço',
+                status: 'COMPLETED',
+                color: Colors.green.shade700,
+                icon: Icons.done_all,
+              ),
+              
+              if (_currentStatus == 'REJECTED')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 20.0),
+                    child: Text('Este ticket foi reprovado pelo administrador. Nenhuma ação é necessária.', 
+                      style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold)),
+                  ),
+            ],
+          ),
         ),
       ),
     );
