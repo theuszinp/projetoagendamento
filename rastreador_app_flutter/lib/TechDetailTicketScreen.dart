@@ -42,7 +42,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
 
     // Mensagem de confirmação para status 'COMPLETED'
     if (newStatus == 'COMPLETED') {
-       final bool? confirm = await showDialog<bool>(
+        final bool? confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Confirmar Conclusão'),
@@ -57,6 +57,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     }
 
 
+    if (!mounted) return;
     setState(() {
       _isProcessing = true;
     });
@@ -84,7 +85,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
           
           // Se for concluído, retorna para a lista principal para remover o item
           if (newStatus == 'COMPLETED') {
-             Navigator.pop(context, true); 
+              Navigator.pop(context, true); 
           }
         }
       } else {
@@ -93,10 +94,14 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
       }
     } catch (e) {
       _showSnackBar('Erro de rede: $e', Colors.deepOrange);
+      // ignore: avoid_print
+      print('Erro de rede: $e');
     } finally {
-      setState(() {
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
     }
   }
 
@@ -217,9 +222,11 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
             _buildDetailRow('Nome', ticket['customer_name']),
             _buildDetailRow('Endereço', ticket['customer_address'], isMultiline: true),
             
-            // Supondo que você tenha o telefone e e-mail no backend
-            _buildDetailRow('Telefone', ticket['customer_phone'] ?? 'Não informado'),
-            _buildDetailRow('E-mail', ticket['customer_email'] ?? 'Não informado'),
+            // Linha mantida/ajustada para exibir o número do cliente
+            _buildDetailRow('Telefone', ticket['customer_phone'] ?? 'Não informado'), 
+            
+            // Linha REMOVIDA:
+            // _buildDetailRow('E-mail', ticket['customer_email'] ?? 'Não informado'), 
             const SizedBox(height: 30),
 
             // 4. Ações do Técnico

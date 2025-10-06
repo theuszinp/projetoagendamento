@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Import necessário para o Filter
 import 'package:http/http.dart' as http;
-import 'package:lucide_icons_flutter/lucide_icons.dart'; 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 // Substitua pelo seu BASE_URL
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
@@ -33,6 +34,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _identifierController = TextEditingController(); // Usado para busca (CPF/CNPJ)
+  final TextEditingController _phoneNumberController = TextEditingController(); // <--- NOVO CONTROLADOR PARA O NÚMERO
   
   bool _isLoading = false;
   bool _isSearching = false;
@@ -49,6 +51,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     _addressController.dispose();
     _descriptionController.dispose();
     _identifierController.dispose();
+    _phoneNumberController.dispose(); // <--- DISPOSE NOVO CONTROLADOR
     super.dispose();
   }
 
@@ -62,12 +65,14 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _isSearching = true;
       _clientId = null; // Reseta o ID do cliente
       _isClientDataReadOnly = false; // Permite edição enquanto busca
       _customerNameController.clear();
       _addressController.clear();
+      // _phoneNumberController.clear(); // Não limpamos o número, pois ele é opcional na busca
     });
 
     try {
@@ -77,28 +82,39 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        setState(() {
-          // Cliente encontrado: preenche os campos e os torna somente leitura
-          _clientId = data['id']; 
-          _customerNameController.text = data['name'] ?? 'Cliente sem nome';
-          _addressController.text = data['address'] ?? 'Endereço não fornecido';
-          _isClientDataReadOnly = true; 
-        });
+        if (mounted) {
+          setState(() {
+            // Cliente encontrado: preenche os campos e os torna somente leitura
+            _clientId = data['id']; 
+            _customerNameController.text = data['name'] ?? 'Cliente sem nome';
+            _addressController.text = data['address'] ?? 'Endereço não fornecido';
+            // Se a API retornar o telefone, preencha:
+            _phoneNumberController.text = data['phoneNumber'] ?? ''; // <--- Puxa o número se houver
+            _isClientDataReadOnly = true; 
+          });
+        }
         _showSnackBar('✅ Cliente encontrado com sucesso!', Colors.green);
       } else {
         // Cliente NÃO encontrado: limpa e mantém campos editáveis.
-        _customerNameController.clear();
-        _addressController.clear();
-        _isClientDataReadOnly = false; 
+        if (mounted) {
+          setState(() {
+            _customerNameController.clear();
+            _addressController.clear();
+            _isClientDataReadOnly = false; 
+          });
+        }
         _showSnackBar('⚠️ Cliente não encontrado. Preencha os dados manualmente.', Colors.red);
       }
     } catch (e) {
       _showSnackBar('❌ Erro de conexão ao buscar cliente.', Colors.deepOrange);
+      // ignore: avoid_print
       print('Erro ao buscar cliente: $e');
     } finally {
-      setState(() {
-        _isSearching = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
     }
   }
 
@@ -125,7 +141,14 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         _showSnackBar('⚠️ O Endereço de Instalação é obrigatório.', Colors.red);
         return;
     }
+    // 🚨 NOVA VALIDAÇÃO: Número do Cliente
+    if (_phoneNumberController.text.trim().isEmpty) {
+        _showSnackBar('⚠️ O Número de Contato do Cliente é obrigatório.', Colors.red);
+        return;
+    }
 
+
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -139,6 +162,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         'requestedBy': widget.requestedByUserId,
         'customerName': _customerNameController.text.trim(), // Enviamos sempre o nome digitado/puxado
         'address': _addressController.text.trim(), // Enviamos sempre o endereço digitado/puxado
+        // 🚨 DADO NOVO: Adiciona o número de telefone
+        'phoneNumber': _phoneNumberController.text.trim(), 
         // 🚨 CORREÇÃO: Adiciona o identificador (CPF/CNPJ) à requisição
         // O backend precisa disso para criar um novo cliente se o 'clientId' for nulo.
         'identifier': _identifierController.text.trim(),
@@ -166,6 +191,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       }
     } catch (e) {
       _showSnackBar('❌ Erro de conexão. Verifique a API/Internet.', Colors.deepOrange);
+      // ignore: avoid_print
       print('Erro ao enviar ticket: $e');
     } finally {
       if (mounted) {
@@ -178,6 +204,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
   // Helper para limpar formulário e IDs
   void _clearForm() {
+    if (!mounted) return;
     setState(() {
       _clientId = null;
       _selectedPriority = null;
@@ -188,6 +215,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     _addressController.clear();
     _descriptionController.clear();
     _identifierController.clear();
+    _phoneNumberController.clear(); // <--- LIMPA O NOVO CONTROLADOR
   }
 
   // Helper para SnackBar
@@ -268,6 +296,28 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 decoration: _buildInputDecoration(
                   _isClientDataReadOnly ? 'Nome Completo (Preenchido Automaticamente)' : 'Nome Completo (Obrigatório)', 
                   LucideIcons.user
+                ).copyWith(
+                  filled: _isClientDataReadOnly, // Realça se for automático
+                  fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
+                ),
+                validator: (value) {
+                  // A validação de obrigatoriedade agora é feita no _submitTicket
+                  return null;
+                },
+              ),
+              const SizedBox(height: 15),
+
+              // 🚨 NOVO CAMPO: NÚMERO DO CLIENTE
+              TextFormField(
+                controller: _phoneNumberController,
+                readOnly: _isClientDataReadOnly, // Somente leitura se encontrado na busca
+                keyboardType: TextInputType.phone, // Teclado numérico
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly, // Permite apenas números
+                ],
+                decoration: _buildInputDecoration(
+                  _isClientDataReadOnly ? 'Número de Contato (Auto)' : 'Número de Contato (Obrigatório)', 
+                  LucideIcons.phone
                 ).copyWith(
                   filled: _isClientDataReadOnly, // Realça se for automático
                   fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
