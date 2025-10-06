@@ -63,7 +63,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
 
     try {
-      final url = Uri.parse('$API_BASE_URL/users');
+      // Usando a rota mais eficiente (/technicians) seria ideal, mas usaremos /users como no código original
+      final url = Uri.parse('$API_BASE_URL/users'); 
       final response = await http.get(
         url,
         headers: {
@@ -143,6 +144,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  // ----------------------------------------------------
+  // LÓGICA NOVA: REPROVAR TICKET (PUT /tickets/:id/reject)
+  // ----------------------------------------------------
+  Future<void> _rejectTicket(String ticketId, int adminId) async {
+    
+    // Mensagem de feedback inicial
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Reprovando ticket #$ticketId...')),
+    );
+
+    try {
+      final url = Uri.parse('$API_BASE_URL/tickets/$ticketId/reject');
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.authToken}',
+        },
+        body: json.encode({
+          'admin_id': adminId,
+        }), 
+      );
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ticket reprovado com sucesso!')),
+        );
+        _fetchTickets(); // Recarrega a lista para mostrar o novo status
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['error'] ?? 'Falha ao reprovar ticket. Código: ${response.statusCode}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao reprovar ticket: ${e.toString()}')),
+      );
+      print('Erro ao reprovar ticket: $e');
+    }
+  }
+
 
   // ----------------------------------------------------
   // LÓGICA: GERENCIAR TICKET (PUT /tickets/:id/approve)
@@ -155,7 +196,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     
     // Mensagem de feedback inicial
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Aprovando e atribuindo ticket #${ticketId} ao técnico ID $assignedToId...')),
+      SnackBar(content: Text('Aprovando e atribuindo ticket #$ticketId ao técnico ID $assignedToId...')),
     );
 
     try {
@@ -258,10 +299,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ),
                   if (_technicians.isEmpty)
-                     const Padding(
-                      padding: EdgeInsets.only(top: 10.0),
-                      child: Text('Nenhum técnico encontrado no banco de dados.', style: TextStyle(color: Colors.red, fontSize: 14)),
-                    )
+                      const Padding(
+                          padding: EdgeInsets.only(top: 10.0),
+                          child: Text('Nenhum técnico encontrado no banco de dados.', style: TextStyle(color: Colors.red, fontSize: 14)),
+                      )
                   else if (selectedTech == null) 
                     const Padding(
                       padding: EdgeInsets.only(top: 8.0),
@@ -307,23 +348,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // UI: ITEM DA LISTA AJUSTADO
   // ----------------------------------------------------
   Widget _buildTicketItem(Map<String, dynamic> ticket) {
-    final isApproved = ticket['approved'] == true;
-    final isAssigned = ticket['assigned_to'] != null;
-    final assignedToId = ticket['assigned_to'];
+    final ticketStatus = ticket['status'] ?? 'PENDING';
     
-    // Define o status e a cor
-    String statusText = 'PENDENTE';
-    Color statusColor = Colors.orange.shade700;
-
-    if (isApproved && isAssigned) {
-      statusText = 'APROVADO / ATRIBUÍDO';
-      statusColor = Colors.green.shade700;
-    } else if (isApproved && !isAssigned) {
-      statusText = 'APROVADO (SEM TÉCNICO)';
-      statusColor = Colors.lightBlue.shade700;
+    // Define o status e a cor com base no campo 'status' do backend
+    String statusText;
+    Color statusColor;
+    
+    switch (ticketStatus) {
+      case 'APPROVED':
+        statusText = 'APROVADO / ATRIBUÍDO';
+        statusColor = Colors.green.shade700;
+        break;
+      case 'REJECTED':
+        statusText = 'REPROVADO';
+        statusColor = Colors.red.shade700;
+        break;
+      case 'PENDING':
+      default:
+        statusText = 'PENDENTE DE AVALIAÇÃO';
+        statusColor = Colors.orange.shade700;
+        break;
     }
     
     // Busca o nome do técnico
+    final assignedToId = ticket['assigned_to'];
     String assignedTechName = 'Ninguém';
     if (assignedToId != null) {
         final tech = _technicians.firstWhere(
@@ -345,6 +393,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         date = ticket['created_at'].toString();
       }
     }
+
+    // Define se os botões de ação devem aparecer (apenas para status PENDING)
+    final showActions = ticketStatus == 'PENDING';
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -381,20 +432,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Text('Cliente: ${ticket['customer_name'] ?? 'N/A'}'),
             Text('Endereço: ${ticket['customer_address'] ?? 'N/A'}'),
             Text('Prioridade: ${ticket['priority'] ?? 'N/A'}'),
-            Text('Atribuído a: $assignedTechName'),
+            if (ticketStatus == 'APPROVED') 
+              Text('Atribuído a: $assignedTechName', style: const TextStyle(fontWeight: FontWeight.bold)),
             Text('Criação: $date'),
             const SizedBox(height: 12),
             
-            // Botões de Ação, visíveis apenas se AINDA não estiver aprovado
-            if (!isApproved)
+            // Botões de Ação, visíveis apenas se o status for PENDENTE
+            if (showActions)
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   OutlinedButton.icon(
                     icon: const Icon(Icons.close, color: Colors.red),
                     label: const Text('Reprovar', style: TextStyle(color: Colors.red)),
-                    // O Reprovar está desabilitado, pois você precisaria de uma rota específica no backend
-                    onPressed: null, 
+                    // AGORA HABILITADO: Chama a nova função _rejectTicket
+                    onPressed: () => _rejectTicket(ticketId, widget.userId), 
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton.icon(

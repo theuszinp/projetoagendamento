@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'create_ticket_screen.dart'; 
 import 'techdashboardscreen.dart'; 
 import 'admindashboardscreen.dart'; 
+// 💡 NOVO: Importação para a tela de lista de tickets do vendedor
+import 'SellerTicketListScreen.dart'; 
 
 // URL base do seu backend no Render
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
@@ -115,7 +117,7 @@ class _LoginPageState extends State<LoginPage> {
             // Vendedor ('seller' ou 'vendedor') e Técnico ('tech') vão para a HomeScreen
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => HomeScreen(userData: data)),
+              MaterialPageRoute(builder: (context) => HomeScreen(userData: data, authToken: token)), // 💡 NOVO: Passando o token
             );
           }
         }
@@ -243,13 +245,13 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 child: _isLoading
                     ? const SizedBox( // Indicador de carregamento
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 3,
-                        ),
-                      )
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
+                        )
                     : const Text(
                         'Entrar', 
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
@@ -273,8 +275,9 @@ class _LoginPageState extends State<LoginPage> {
 
 class HomeScreen extends StatelessWidget {
   final Map<String, dynamic> userData;
+  final String authToken; // 💡 NOVO: Recebe o token de autenticação
 
-  const HomeScreen({super.key, required this.userData});
+  const HomeScreen({super.key, required this.userData, required this.authToken}); // 💡 NOVO: Adicionado authToken
 
   @override
   Widget build(BuildContext context) {
@@ -290,6 +293,98 @@ class HomeScreen extends StatelessWidget {
     String userEmail = userData['email'] ?? 'Sem E-mail';
     String rawData = jsonEncode(userData); // Para mostrar no debug
     
+    // Lista de Widgets de Ação (para evitar repetição de código)
+    List<Widget> actionButtons = [];
+    
+    // Verifica se é VENDEDOR (SELLER)
+    if (normalizedRole == 'vendedor' || normalizedRole == 'seller') {
+      
+      // 1. Botão de Criar Novo Agendamento (já existia)
+      actionButtons.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.add_to_photos_rounded),
+            label: const Text('Novo Agendamento', style: TextStyle(fontSize: 16)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CreateTicketScreen(
+                    requestedByUserId: userId, // Passa o ID do Vendedor
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade600,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      );
+      
+      // 🚨 NOVO: 2. Botão de Ver Status dos Agendamentos (SellerTicketListScreen)
+      actionButtons.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.list_alt_rounded),
+            label: const Text('Status dos Meus Agendamentos', style: TextStyle(fontSize: 16)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SellerTicketListScreen(
+                    authToken: authToken, // Passa o Token
+                    userId: userId, // Passa o ID do Vendedor
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade700, // Cor diferente para distinção
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Verifica se é TÉCNICO (TECH)
+    if (normalizedRole == 'tech') {
+      // Botão de Chamados do Técnico (já existia)
+      actionButtons.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.build_circle),
+            label: const Text('Meus Chamados (Técnico)', style: TextStyle(fontSize: 16)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TechDashboardScreen(
+                    techId: userId, // Passa o ID do Técnico
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      );
+    }
+        
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bem-Vindo(a)'),
@@ -327,61 +422,9 @@ class HomeScreen extends StatelessWidget {
               Text('Você está logado como ${userRole.toUpperCase()}.', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 30),
 
-              // 🚨 BOTÃO DE CRIAÇÃO DE TICKET (VENDEDOR / SELLER)
-              // CORREÇÃO: Verifica se a role normalizada é 'vendedor' OU 'seller'
-              if (normalizedRole == 'vendedor' || normalizedRole == 'seller') 
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10.0),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.add_to_photos_rounded),
-                    label: const Text('Novo Agendamento (Vendedor)', style: TextStyle(fontSize: 16)),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CreateTicketScreen(
-                            requestedByUserId: userId, // Passa o ID do Vendedor
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-                
-
-              // 🚨 BOTÃO DE VISUALIZAÇÃO DE CHAMADOS (TÉCNICO)
-              // Agora checa a role normalizada para 'tech'
-              if (normalizedRole == 'tech')
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10.0),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.build_circle),
-                    label: const Text('Meus Chamados (Técnico)', style: TextStyle(fontSize: 16)),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => TechDashboardScreen(
-                            techId: userId, // Passa o ID do Técnico
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-                        
+              // Exibe os botões de ação gerados (Novo Agendamento e/ou Lista de Status)
+              ...actionButtons,
+              
               const SizedBox(height: 50),
 
               // Detalhes e Debug

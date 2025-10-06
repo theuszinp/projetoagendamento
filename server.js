@@ -1,21 +1,21 @@
 // =====================================================================
 
-// 🚨 1. CARREGAR VARIÁVEIS DE AMBIENTE (DEVE SER O PRIMEIRO!)
-require('dotenv').config(); 
+// 1. CARREGAR VARIÁVEIS DE AMBIENTE (DEVE SER O PRIMEIRO!)
+require('dotenv').config();
 
 // 2. IMPORTAR LIBS
 const express = require('express');
 const bodyParser = require('body-parser');
-const path = require('path'); 
+const path = require('path');
 
 // 3. IMPORTAR MÓDULOS (QUE AGORA CONSEGUEM LER O .env)
 const pool = require('./db');
 // Checa se o arquivo firebase.js existe antes de tentar importar (apenas para ambiente com FCM)
-const adminFirebase = require.resolve('./firebase') ? require('./firebase') : null; 
+const adminFirebase = require.resolve('./firebase') ? require('./firebase') : null;
 
 const app = express();
 // Se estiver rodando localmente, use 3000. No Render, ele usará a variável PORT.
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3000;
 
 // Middleware para processar JSON nas requisições
 app.use(bodyParser.json());
@@ -43,14 +43,14 @@ app.get('/users', async (req, res) => {
         res.status(500).json({ error: 'Erro ao listar usuários.' });
     }
 });
- 
+
 // 🆕 Rota 2.1: LISTAR SOMENTE TÉCNICOS (Otimizado para dropdown)
 app.get('/technicians', async (req, res) => {
     // 🚨 ATENÇÃO: Em produção, você deve incluir uma verificação de segurança (role !== 'admin')
     try {
         const result = await pool.query(
-            // Filtra apenas usuários com role = 'tech'
-            "SELECT id, name, email FROM users WHERE role = 'tech' ORDER BY name ASC"
+            // Filtra apenas usuários com role = 'tech' e retorna só o essencial
+            "SELECT id, name FROM users WHERE role = 'tech' ORDER BY name ASC"
         );
         // Retorna um array de técnicos
         res.json({ technicians: result.rows });
@@ -62,13 +62,13 @@ app.get('/technicians', async (req, res) => {
 
 
 // 3️⃣ Rota: LISTAR TODOS OS TICKETS (NECESSÁRIO PARA ADMIN)
-// ESTA É A ROTA CRÍTICA QUE SEU FLUTTER CHAMA!
+// Admin vê todos os tickets, independentemente do status (PENDING, APPROVED, REJECTED)
 app.get('/tickets', async (req, res) => {
     // 🚨 ATENÇÃO: Em produção, você deve incluir uma verificação de segurança (role !== 'admin')
     try {
         // Exemplo de JOIN para trazer o nome do técnico atribuído
         const result = await pool.query(
-            `SELECT 
+            `SELECT
                 t.*,
                 u.name AS assigned_to_name
              FROM tickets t
@@ -76,10 +76,36 @@ app.get('/tickets', async (req, res) => {
              ORDER BY t.created_at DESC`
         );
         // O Flutter espera { tickets: [...] }
-        res.json({ tickets: result.rows }); 
+        res.json({ tickets: result.rows });
     } catch (err) {
         console.error('Erro em GET /tickets:', err);
         res.status(500).json({ error: 'Erro ao listar todos os tickets.' });
+    }
+});
+
+
+// 🆕 Rota 3.1: LISTAR TICKETS POR SOLICITANTE (PARA VENDEDOR)
+// O vendedor vê todos os tickets que ele criou, com seus status.
+app.get('/tickets/requested/:requested_by_id', async (req, res) => {
+    const requestedById = req.params.requested_by_id;
+
+    try {
+        const result = await pool.query(
+            // Filtra tickets onde o ID do solicitante bate com o ID na URL
+            `SELECT
+                t.*,
+                u.name AS assigned_to_name
+             FROM tickets t
+             LEFT JOIN users u ON t.assigned_to = u.id
+             WHERE t.requested_by = $1
+             ORDER BY t.created_at DESC`,
+            [requestedById]
+        );
+        // Vendedor consegue ver PENDING, APPROVED, REJECTED
+        res.json({ tickets: result.rows });
+    } catch (err) {
+        console.error('Erro em GET /tickets/requested/:requested_by_id:', err);
+        res.status(500).json({ error: 'Erro ao listar tickets solicitados.' });
     }
 });
 
@@ -94,7 +120,7 @@ app.post('/login', async (req, res) => {
 
     try {
         const userResult = await pool.query(
-            'SELECT id, name, email, password_hash, role FROM users WHERE email = $1', 
+            'SELECT id, name, email, password_hash, role FROM users WHERE email = $1',
             [email]
         );
         const user = userResult.rows[0];
@@ -104,10 +130,8 @@ app.post('/login', async (req, res) => {
         }
 
         // 🚨 SEGURANÇA CRÍTICA: ESTA COMPARAÇÃO DEVE SER MUDADA EM PRODUÇÃO!
-        // Use uma biblioteca de hash como 'bcrypt'. Ex: 
-        // const isMatch = await bcrypt.compare(senha, user.password_hash);
-        const isMatch = senha === user.password_hash; 
-        
+        const isMatch = senha === user.password_hash;
+
         if (!isMatch) {
             return res.status(401).json({ error: 'Credenciais inválidas.' });
         }
@@ -118,8 +142,6 @@ app.post('/login', async (req, res) => {
             name: user.name,
             email: user.email,
             role: user.role,
-            // Em produção, aqui iria o JWT gerado:
-            // token: generateJwt(user.id, user.role) 
         });
 
     } catch (err) {
@@ -130,7 +152,7 @@ app.post('/login', async (req, res) => {
 
 // 5️⃣ Rota: BUSCA DE CLIENTE (POR IDENTIFIER - CPF/CNPJ)
 app.get('/clients/search', async (req, res) => {
-    const { identifier } = req.query; 
+    const { identifier } = req.query;
 
     if (!identifier) {
         return res.status(400).json({ error: 'O identificador (CPF/CNPJ) do cliente é obrigatório.' });
@@ -138,7 +160,7 @@ app.get('/clients/search', async (req, res) => {
 
     try {
         const clientResult = await pool.query(
-            'SELECT id, name, address, identifier FROM customers WHERE identifier = $1', 
+            'SELECT id, name, address, identifier FROM customers WHERE identifier = $1',
             [identifier]
         );
         const client = clientResult.rows[0];
@@ -162,7 +184,7 @@ app.get('/clients/search', async (req, res) => {
 
 // 6️⃣ Rota: Vendedora cria ticket (Suporte a Cliente Novo/Existente)
 app.post('/ticket', async (req, res) => {
-    const { title, description, priority, requestedBy, clientId, customerName, address, identifier } = req.body; 
+    const { title, description, priority, requestedBy, clientId, customerName, address, identifier } = req.body;
 
     if (!title || !description || !priority || !requestedBy || !customerName || !address) {
         return res.status(400).json({ error: 'Campos essenciais (título, descrição, prioridade, solicitante, nome e endereço) são obrigatórios.' });
@@ -218,19 +240,19 @@ app.post('/ticket', async (req, res) => {
             finalClientId = clientId;
         }
 
-        // Insere o novo ticket
+        // Insere o novo ticket com status PENDING
         const result = await clientDB.query(
-            `INSERT INTO tickets 
-             (title, description, priority, customer_id, customer_name, customer_address, requested_by, approved, assigned_to) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, false, NULL) RETURNING *`,
+            `INSERT INTO tickets
+             (title, description, priority, customer_id, customer_name, customer_address, requested_by, assigned_to, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, 'PENDING') RETURNING *`,
             [
-                title, 
-                description, 
-                priority, 
+                title,
+                description,
+                priority,
                 finalClientId, // ID do cliente (novo ou existente)
-                customerName, 
-                address,      
-                requestedBy 
+                customerName,
+                address,
+                requestedBy
             ]
         );
 
@@ -251,17 +273,18 @@ app.post('/ticket', async (req, res) => {
 });
 
 
-// 7️⃣ Rota: Administrativo aprova ticket + Notificação FCM
+// 7️⃣ Rota: Administrativo aprova ticket + Atribuição de Técnico + Notificação FCM
+// Esta rota agora garante que o assigned_to não é nulo/inválido, resolvendo o problema do botão cinza/clique.
 app.put('/tickets/:id/approve', async (req, res) => {
     const ticketId = req.params.id;
-    const { admin_id, assigned_to } = req.body; 
+    const { admin_id, assigned_to } = req.body;
 
-    const client = await pool.connect(); 
+    const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
-        
-        // 🚨 PASSO 1: VERIFICAR SE O admin_id TEM CARGO 'admin'
+
+        // 🚨 PASSO 1: VERIFICAR ADMIN
         const userRes = await client.query(
             'SELECT role FROM users WHERE id = $1',
             [admin_id]
@@ -272,25 +295,29 @@ app.put('/tickets/:id/approve', async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(403).json({ error: 'Apenas usuários com o cargo de admin podem aprovar tickets.' });
         }
-        
-        // 🚨 PASSO 2: VERIFICAR SE O TÉCNICO EXISTE (CORREÇÃO DO ERRO 23503)
-        // Isso previne a violação da chave estrangeira
+
+        // 🚨 PASSO 2: VERIFICAR E GARANTIR QUE UM TÉCNICO VÁLIDO FOI ATRIBUÍDO
+        if (!assigned_to) {
+            await client.query('ROLLBACK');
+            // Retorna 400 para o Flutter saber que falta a seleção do técnico
+            return res.status(400).json({ error: 'O ID do técnico para atribuição é obrigatório para aprovar o ticket.' });
+        }
+
         const techResCheck = await client.query(
-            'SELECT id FROM users WHERE id = $1',
+            'SELECT id FROM users WHERE id = $1 AND role = \'tech\'',
             [assigned_to]
         );
         if (techResCheck.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.status(404).json({ 
-                error: `O técnico com ID ${assigned_to} não foi encontrado. Por favor, verifique o ID na tabela 'users'.`, 
-                details: 'Violacao de chave estrangeira (23503) prevenida.'
+            return res.status(404).json({
+                error: `Técnico com ID ${assigned_to} não encontrado ou não tem o cargo 'tech'.`,
             });
         }
-        
-        // 3. Atualiza o ticket
+
+        // 3. Atualiza o ticket: define status como 'APPROVED' e atribui o técnico
         const update = await client.query(
-            `UPDATE tickets 
-             SET approved = true, approved_by = $1, approved_at = now(), assigned_to = $2
+            `UPDATE tickets
+             SET status = 'APPROVED', approved_by = $1, approved_at = now(), assigned_to = $2
              WHERE id = $3 RETURNING *`,
             [admin_id, assigned_to, ticketId]
         );
@@ -302,17 +329,17 @@ app.put('/tickets/:id/approve', async (req, res) => {
             return res.status(404).json({ error: 'Ticket não encontrado.' });
         }
 
-        // 4. Busca o fcm_token do técnico (somente se a lib firebase existir)
+        // 4. Lógica de Notificação FCM (Mantida como placeholder)
         let notification_sent = false;
 
-        if (adminFirebase) {
+        if (adminFirebase && assigned_to) {
             const techRes = await client.query(
                 'SELECT fcm_token, name FROM users WHERE id = $1',
                 [assigned_to]
             );
             const tech = techRes.rows[0];
 
-            // 5. Envia notificação FCM 
+            // 5. Envia notificação FCM
             if (tech && tech.fcm_token) {
                 const message = {
                     token: tech.fcm_token,
@@ -326,8 +353,7 @@ app.put('/tickets/:id/approve', async (req, res) => {
                     }
                 };
                 try {
-                    // Aqui você faria o envio real:
-                    // await adminFirebase.messaging().send(message); 
+                    // await adminFirebase.messaging().send(message);
                     notification_sent = true;
                 } catch (fcmError) {
                     console.error(`Falha ao enviar notificação FCM para o técnico ID ${assigned_to}:`, fcmError.message);
@@ -336,7 +362,7 @@ app.put('/tickets/:id/approve', async (req, res) => {
                 console.warn(`Token FCM não encontrado ou inválido para o técnico ID ${assigned_to}`);
             }
         } else {
-            console.warn('Módulo Firebase não carregado. Pulando notificação FCM.');
+            console.warn('Módulo Firebase não carregado ou técnico não atribuído. Pulando notificação FCM.');
         }
 
 
@@ -352,19 +378,56 @@ app.put('/tickets/:id/approve', async (req, res) => {
     }
 });
 
-// 8️⃣ Rota: Técnico lista tickets aprovados (Somente approved = true)
+// 🆕 Rota 8️⃣: Administrativo REJEITA/REPROVA ticket
+// Muda o status para REJECTED e remove a atribuição, retornando o ticket ao vendedor.
+app.put('/tickets/:id/reject', async (req, res) => {
+    const ticketId = req.params.id;
+    const { admin_id } = req.body;
+
+    // Em um cenário real, você faria a checagem do admin_id aqui também.
+    // ...
+
+    try {
+        const result = await pool.query(
+            // Mudar status para REJECTED e remover atribuição de técnico (NULL)
+            `UPDATE tickets
+             SET status = 'REJECTED', approved_by = $1, approved_at = now(), assigned_to = NULL
+             WHERE id = $2 RETURNING *`,
+            [admin_id, ticketId]
+        );
+
+        const ticket = result.rows[0];
+
+        if (!ticket) {
+            return res.status(404).json({ error: 'Ticket não encontrado para ser reprovado.' });
+        }
+
+        // Retorna o ticket atualizado com o novo status
+        res.status(200).json({
+            message: `Ticket ID ${ticketId} foi reprovado com sucesso e seu status foi atualizado para REJECTED.`,
+            ticket: ticket
+        });
+
+    } catch (err) {
+        console.error('Erro em PUT /tickets/:id/reject:', err);
+        res.status(500).json({ error: 'Erro ao reprovar ticket.', details: err.message });
+    }
+});
+
+
+// 9️⃣ Rota: Técnico lista tickets aprovados (Somente status = 'APPROVED')
 app.get('/tickets/assigned/:tech_id', async (req, res) => {
     const techId = req.params.tech_id;
 
     try {
         const result = await pool.query(
-            // Filtra EXATAMENTE: approved = true E assigned_to é o ID do técnico
-            `SELECT 
+            // Filtra tickets com status 'APPROVED' E atribuído ao técnico
+            `SELECT
                 t.*,
-                u.name AS assigned_by_admin_name
+                u.name AS approved_by_admin_name
              FROM tickets t
              LEFT JOIN users u ON t.approved_by = u.id
-             WHERE t.approved = true AND t.assigned_to = $1 
+             WHERE t.status = 'APPROVED' AND t.assigned_to = $1
              ORDER BY t.created_at DESC`,
             [techId]
         );
@@ -397,7 +460,7 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
     console.error('Tratador de Erro Geral (500):', err.stack);
     const statusCode = err.statusCode || 500;
-    
+
     // Garante que a resposta de erro é JSON
     res.status(statusCode).json({
         error: 'Erro interno inesperado no servidor.',
@@ -413,7 +476,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`Servidor Express rodando na porta ${PORT}`);
     console.log(`Para testar, use: http://localhost:${PORT}`);
-    // Este log só aparecerá no log do Render
-    // CORRIGIDO: Removida a barra invertida (\) que causava erro de sintaxe
+    // O log da Base URL foi corrigido para não ter caracteres invisíveis
     console.log(`Base URL: ${process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`}`);
 });
