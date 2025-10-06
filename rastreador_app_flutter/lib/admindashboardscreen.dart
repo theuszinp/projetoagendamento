@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 
 // ----------------------------------------------------
-// MODELO DE USUÁRIO (TÉCNICO) - Criado para este arquivo
+// MODELO DE USUÁRIO (TÉCNICO)
 // ----------------------------------------------------
 class User {
   final int id;
@@ -57,14 +57,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoadingTechs = true;
   String? _errorMessage;
 
-  // 🚨 NOVO: Estado para filtrar os tickets. Inicialmente, mostra apenas Pendentes.
+  // Estado para filtrar os tickets. Inicialmente, mostra apenas Pendentes.
   String _currentFilter = 'PENDING'; // Valores possíveis: 'PENDING', 'APPROVED', 'REJECTED', 'ALL'
 
   @override
   void initState() {
     super.initState();
     // Otimização: Inicia o carregamento de tickets e técnicos em paralelo.
-    // O fetchTickets agora usa o filtro padrão 'PENDING'.
     _fetchTechnicians();
     _fetchTickets();
   }
@@ -73,7 +72,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // LÓGICA: BUSCAR TÉCNICOS (GET /users)
   // ----------------------------------------------------
   Future<void> _fetchTechnicians() async {
-    // Mantém o isLoadingTechs = true para o primeiro carregamento
+    // Mantém o isLoadingTechs = true para o primeiro carregamento ou recarga
+    if (!mounted) return;
     if (!_isLoadingTechs) {
       setState(() {
         _isLoadingTechs = true;
@@ -81,7 +81,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
 
     try {
-      // Usando /users e filtrando no Flutter (melhor seria a rota /technicians, mas esta funciona)
+      // Usando /users e filtrando no Flutter
       final url = Uri.parse('$API_BASE_URL/users');
       final response = await http.get(
         url,
@@ -95,7 +95,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final data = json.decode(response.body);
         if (data['users'] is List) {
           final List<dynamic> userList = data['users'];
-          if(mounted) {
+          if (mounted) {
             setState(() {
               // Mapeia e filtra APENAS por usuários com role 'tech'
               _technicians = userList
@@ -109,7 +109,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
       } else {
         final errorData = json.decode(response.body);
-        if(mounted) {
+        if (mounted) {
           setState(() {
             _errorMessage = errorData['error'] ?? 'Falha ao carregar técnicos. Código: ${response.statusCode}';
             _isLoadingTechs = false;
@@ -117,7 +117,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
       }
     } catch (e) {
-      if(mounted) {
+      if (mounted) {
         setState(() {
           _errorMessage = 'Erro de rede ao carregar técnicos: $e';
           _isLoadingTechs = false;
@@ -126,19 +126,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-
   // ----------------------------------------------------
   // LÓGICA: BUSCAR TICKETS (GET /tickets)
   // ----------------------------------------------------
   Future<void> _fetchTickets() async {
+    if (!mounted) return;
     setState(() {
       _isLoadingTickets = true;
       _errorMessage = null;
     });
 
     try {
-      // A rota /tickets deve retornar todos os tickets. O filtro ocorre localmente ou na API,
-      // mas para este caso, vamos supor que o backend envia TUDO e nós filtramos.
       final url = Uri.parse('$API_BASE_URL/tickets');
       final response = await http.get(
         url,
@@ -150,7 +148,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if(mounted) {
+        if (mounted) {
           setState(() {
             // Armazena todos os tickets recebidos
             _tickets = data['tickets'] ?? [];
@@ -160,7 +158,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
       } else {
         final errorData = json.decode(response.body);
-        if(mounted) {
+        if (mounted) {
           setState(() {
             _errorMessage = errorData['error'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}';
             _isLoadingTickets = false;
@@ -168,7 +166,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
       }
     } catch (e) {
-      if(mounted) {
+      if (mounted) {
         setState(() {
           _errorMessage = 'Erro de rede ou servidor: $e';
           _isLoadingTickets = false;
@@ -196,9 +194,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (confirm != true) return;
 
     // Feedback imediato
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Reprovando ticket #$ticketId...')),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reprovando ticket #$ticketId...')),
+      );
+    }
 
     try {
       final url = Uri.parse('$API_BASE_URL/tickets/$ticketId/reject');
@@ -233,7 +233,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-
   // ----------------------------------------------------
   // LÓGICA: APROVAR E ATRIBUIR TICKET (PUT /tickets/:id/approve)
   // ----------------------------------------------------
@@ -243,10 +242,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required int assignedToId,
     required String techName,
   }) async {
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Aprovando e atribuindo ticket #$ticketId ao $techName...')),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Aprovando e atribuindo ticket #$ticketId ao $techName...')),
+      );
+    }
 
     try {
       final url = Uri.parse('$API_BASE_URL/tickets/$ticketId/approve');
@@ -286,25 +286,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // UI: DIALOG DE APROVAÇÃO COM DROPDOWN
   // ----------------------------------------------------
   Future<void> _showAssignmentDialog(Map<String, dynamic> ticket) async {
-    User? selectedTech;
+    // A variável selectedTech é inicializada aqui fora, mas será usada E alterada
+    // dentro do StatefulBuilder para garantir a re-renderização.
+    User? initialSelectedTech;
 
     // Pré-seleciona o técnico se já houver um atribuído
-    if (ticket['assigned_to'] != null && ticket['assigned_to'] is int) {
-      try {
-        selectedTech = _technicians.firstWhere((t) => t.id == ticket['assigned_to']);
-      } catch (_) {
-        selectedTech = null;
+    if (ticket['assigned_to'] != null) {
+      // Tenta converter assigned_to para int, caso seja String
+      final assignedToId = (ticket['assigned_to'] is int) ? ticket['assigned_to'] : int.tryParse(ticket['assigned_to'].toString());
+      if (assignedToId != null) {
+        try {
+          initialSelectedTech = _technicians.firstWhere((t) => t.id == assignedToId);
+        } catch (_) {
+          initialSelectedTech = null;
+        }
       }
     }
 
     return showDialog(
       context: context,
+      // O StatefulBuilder envolve o AlertDialog para que possamos usar setState
+      // e reabilitar o botão APROVAR quando um técnico for selecionado.
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Atribuir Técnico e Aprovar'),
-          content: StatefulBuilder(
-            builder: (BuildContext context, StateSetter setState) {
-              return Column(
+        // Declara selectedTech dentro do builder para ser mutável e persistir o valor
+        // entre as chamadas do setState do StatefulBuilder.
+        User? selectedTech = initialSelectedTech;
+
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return AlertDialog(
+              title: const Text('Atribuir Técnico e Aprovar'),
+              content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -330,6 +342,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           );
                         }).toList(),
                         onChanged: (User? newValue) {
+                          // Usa o setState do StatefulBuilder para reconstruir o diálogo (e o botão)
                           setState(() {
                             selectedTech = newValue;
                           });
@@ -338,46 +351,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   ),
                   if (_technicians.isEmpty)
-                      const Padding(
-                          padding: EdgeInsets.only(top: 10.0),
-                          child: Text('Nenhum técnico encontrado no banco de dados.', style: TextStyle(color: Colors.red, fontSize: 14)),
-                      )
+                    const Padding(
+                      padding: EdgeInsets.only(top: 10.0),
+                      child: Text('Nenhum técnico encontrado no banco de dados.', style: TextStyle(color: Colors.red, fontSize: 14)),
+                    )
                   else if (selectedTech == null && ticket['status'] == 'PENDING')
                     const Padding(
                       padding: EdgeInsets.only(top: 8.0),
                       child: Text('Selecione o técnico para liberar a aprovação.', style: TextStyle(color: Colors.orange, fontSize: 12)),
                     ),
                 ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.check, color: Colors.white),
-              label: const Text('Aprovar e Atribuir'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
-                foregroundColor: Colors.white,
               ),
-              onPressed: selectedTech != null && _technicians.isNotEmpty
-                  ? () {
-                      Navigator.of(context).pop();
-                      _approveTicket(
-                        ticketId: ticket['id'].toString(),
-                        adminId: widget.userId,
-                        assignedToId: selectedTech!.id,
-                        techName: selectedTech!.name,
-                      );
-                    }
-                  : null,
-            ),
-          ],
+              actions: [
+                TextButton(
+                  child: const Text('Cancelar'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.check, color: Colors.white),
+                  label: const Text('Aprovar e Atribuir'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                  // A condição de habilitação é reavaliada após cada setState do Dropdown
+                  onPressed: selectedTech != null && _technicians.isNotEmpty
+                      ? () {
+                          Navigator.of(context).pop();
+                          _approveTicket(
+                            ticketId: ticket['id'].toString(),
+                            adminId: widget.userId,
+                            assignedToId: selectedTech!.id,
+                            techName: selectedTech!.name,
+                          );
+                        }
+                      : null,
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -424,7 +438,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-
   // ----------------------------------------------------
   // UI: ITEM DA LISTA AJUSTADO COM BOTÕES DE AÇÃO
   // ----------------------------------------------------
@@ -456,14 +469,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final assignedToId = ticket['assigned_to'];
     String assignedTechName = 'Ninguém';
     if (assignedToId != null) {
-        final techIdInt = (assignedToId is int) ? assignedToId : int.tryParse(assignedToId.toString());
-        if (techIdInt != null) {
-          final tech = _technicians.cast<User?>().firstWhere(
-              (t) => t?.id == techIdInt,
-              orElse: () => null
-          );
-          assignedTechName = tech?.name ?? ticket['assigned_to_name'] ?? 'ID #$assignedToId (Desconhecido)';
-        }
+      final techIdInt = (assignedToId is int) ? assignedToId : int.tryParse(assignedToId.toString());
+      if (techIdInt != null) {
+        final tech = _technicians.cast<User?>().firstWhere(
+            (t) => t?.id == techIdInt,
+            orElse: () => null
+        );
+        assignedTechName = tech?.name ?? ticket['assigned_to_name'] ?? 'ID #$assignedToId (Desconhecido)';
+      }
     }
 
     // Formata a data (simplificado)
@@ -472,7 +485,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       try {
         final dateTime = DateTime.parse(ticket['created_at']);
         // Formato DD/MM/AAAA hh:mm
-        date = '${dateTime.day}/${dateTime.month}/${dateTime.year} às ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+        date = '${dateTime.day.toString().padLeft(2, '0')}/${dateTime.month.toString().padLeft(2, '0')}/${dateTime.year} às ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
       } catch (_) {
         date = ticket['created_at'].toString().substring(0, 16);
       }
@@ -541,8 +554,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: (_isLoadingTechs)
-                      ? null
-                      : () => _showAssignmentDialog(ticket),
+                        ? null
+                        : () => _showAssignmentDialog(ticket),
                   ),
                 ],
               ),
@@ -560,7 +573,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final isOverallLoading = _isLoadingTickets || _isLoadingTechs;
     final loadingMessage = _isLoadingTickets ? 'Carregando Tickets...' : 'Carregando Técnicos...';
 
-    // NOVO: Filtra a lista de tickets com base no estado _currentFilter
+    // Filtra a lista de tickets com base no estado _currentFilter
     final filteredTickets = _tickets.where((ticket) {
       final status = (ticket['status'] ?? 'PENDING').toString().toUpperCase();
       return _currentFilter == 'ALL' || status == _currentFilter;
@@ -595,7 +608,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           _buildFilterDropdown(), // Widget de filtro
           Expanded(
             child: isOverallLoading
-              ? Center(child: Column(
+                ? Center(child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const CircularProgressIndicator(),
@@ -603,47 +616,53 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     Text(loadingMessage),
                   ],
                 ))
-              : _errorMessage != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, color: Colors.red, size: 40),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Erro ao carregar dados:\n$_errorMessage',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.red, fontSize: 16),
-                            ),
-                            const SizedBox(height: 20),
-                            ElevatedButton(
-                              onPressed: () {
-                                _fetchTechnicians();
-                                _fetchTickets();
-                              },
-                              child: const Text('Tentar Novamente'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : filteredTickets.isEmpty
-                      ? Center(
-                          child: Text(
-                            (_tickets.isEmpty && _currentFilter == 'ALL')
-                              ? 'Nenhum ticket encontrado no total.'
-                              : 'Nenhum ticket encontrado com o status selecionado.',
-                            style: const TextStyle(fontSize: 18, color: Colors.grey),
+                : _errorMessage != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline, color: Colors.red, size: 40),
+                              const SizedBox(height: 10),
+                              Text(
+                                'Erro ao carregar dados:\n$_errorMessage',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.red, fontSize: 16),
+                              ),
+                              const SizedBox(height: 20),
+                              ElevatedButton(
+                                onPressed: () {
+                                  _fetchTechnicians();
+                                  _fetchTickets();
+                                },
+                                child: const Text('Tentar Novamente'),
+                              ),
+                            ],
                           ),
-                        )
-                      : ListView.builder(
-                          itemCount: filteredTickets.length,
-                          itemBuilder: (context, index) {
-                            return _buildTicketItem(filteredTickets[index] as Map<String, dynamic>);
-                          },
                         ),
+                      )
+                    : filteredTickets.isEmpty
+                        ? Center(
+                            child: Text(
+                              (_tickets.isEmpty && _currentFilter == 'ALL')
+                                  ? 'Nenhum ticket encontrado no total.'
+                                  : 'Nenhum ticket encontrado com o status selecionado.',
+                              style: const TextStyle(fontSize: 18, color: Colors.grey),
+                            ),
+                          )
+                        : RefreshIndicator( // Adiciona RefreshIndicator para puxar para recarregar
+                            onRefresh: () async {
+                              await _fetchTechnicians();
+                              await _fetchTickets();
+                            },
+                            child: ListView.builder(
+                                itemCount: filteredTickets.length,
+                                itemBuilder: (context, index) {
+                                  return _buildTicketItem(filteredTickets[index] as Map<String, dynamic>);
+                                },
+                              ),
+                          )
           ),
         ],
       ),
