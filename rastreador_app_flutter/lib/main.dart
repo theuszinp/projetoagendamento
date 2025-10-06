@@ -370,6 +370,7 @@ class HomeScreen extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (context) => TechDashboardScreen(
                     techId: userId, // Passa o ID do Técnico
+                    authToken: authToken, // 💡 ADIÇÃO PARA CORRIGIR O ERRO
                   ),
                 ),
               );

@@ -40,9 +40,12 @@ class Ticket {
       priority: json['priority'] as String,
       customerName: json['customer_name'] as String,
       customerAddress: json['customer_address'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      // Trata datas que podem vir nulas ou inválidas, usando now() como fallback seguro
+      createdAt: json['created_at'] != null
+        ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
+        : DateTime.now(),
       // Assumindo que o backend retorna o status
-      status: json['status'] as String? ?? 'APPROVED', 
+      status: json['status'] as String? ?? 'APPROVED',
     );
   }
 
@@ -64,10 +67,10 @@ class Ticket {
 
 class TechDashboardScreen extends StatefulWidget {
   final int techId;
-  final String authToken; // 💡 Adicionando authToken para poder passar para a tela de detalhes
+  final String authToken; // 💡 Adicionado authToken
 
-  // 💡 Ajustei o construtor para receber o authToken
-  const TechDashboardScreen({super.key, required this.techId, required this.authToken}); 
+  // 💡 Construtor com authToken obrigatório
+  const TechDashboardScreen({super.key, required this.techId, required this.authToken});
 
   @override
   State<TechDashboardScreen> createState() => _TechDashboardScreenState();
@@ -86,22 +89,23 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
 
   // 💡 Função auxiliar para forçar o refresh da lista
   void _refreshTickets() {
-     setState(() {
+    setState(() {
       _ticketsFuture = _fetchAssignedTickets();
     });
   }
 
   /// Função para buscar os tickets atribuídos a este técnico
   Future<List<Ticket>> _fetchAssignedTickets() async {
-    // 💡 Ajustei a URI para incluir o token de autorização no cabeçalho
+    // 💡 URI para buscar tickets atribuídos
     final uri = Uri.parse('$API_BASE_URL/tickets/assigned/${widget.techId}');
     
     try {
       final response = await http.get(
-        uri, 
+        uri,
         headers: {
            'Content-Type': 'application/json',
-           'Authorization': 'Bearer ${widget.authToken}', 
+           // O token é enviado no cabeçalho Authorization
+           'Authorization': 'Bearer ${widget.authToken}',
         }
       ).timeout(const Duration(seconds: 15));
 
@@ -120,7 +124,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
         
       } else if (response.statusCode == 404) {
         // Exemplo: Técnico sem tickets (o backend pode retornar 404 ou 200 com lista vazia)
-        return []; 
+        return [];
       } else {
         // Erro na API (ex: erro 500)
         final errorData = json.decode(response.body);
