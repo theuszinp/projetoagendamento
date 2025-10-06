@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+// 💡 IMPORTANTE: Importa a tela de detalhes que acabamos de criar
+import 'TechDetailTicketScreen.dart'; // Ajuste o nome do arquivo se for diferente
 
 // URL base do seu backend (repetida para garantir que o arquivo seja independente)
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
@@ -14,6 +16,7 @@ class Ticket {
   final String customerName;
   final String customerAddress;
   final DateTime createdAt;
+  final String status; // 💡 Adicionado Status para o Técnico ver se já iniciou
 
   Ticket({
     required this.id,
@@ -23,6 +26,7 @@ class Ticket {
     required this.customerName,
     required this.customerAddress,
     required this.createdAt,
+    required this.status, // Novo campo
   });
 
   // Factory constructor para criar um objeto Ticket a partir de um JSON (Map)
@@ -37,14 +41,33 @@ class Ticket {
       customerName: json['customer_name'] as String,
       customerAddress: json['customer_address'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
+      // Assumindo que o backend retorna o status
+      status: json['status'] as String? ?? 'APPROVED', 
     );
+  }
+
+  // Converte o objeto Ticket para um Map<String, dynamic> para passar para a tela de detalhes
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'priority': priority,
+      'customer_name': customerName,
+      'customer_address': customerAddress,
+      'created_at': createdAt.toIso8601String(),
+      'status': status,
+      // Se precisar de outros campos (como customer_id, phone, email, etc.), eles devem ser adicionados aqui
+    };
   }
 }
 
 class TechDashboardScreen extends StatefulWidget {
   final int techId;
+  final String authToken; // 💡 Adicionando authToken para poder passar para a tela de detalhes
 
-  const TechDashboardScreen({super.key, required this.techId});
+  // 💡 Ajustei o construtor para receber o authToken
+  const TechDashboardScreen({super.key, required this.techId, required this.authToken}); 
 
   @override
   State<TechDashboardScreen> createState() => _TechDashboardScreenState();
@@ -61,20 +84,36 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
     _ticketsFuture = _fetchAssignedTickets();
   }
 
+  // 💡 Função auxiliar para forçar o refresh da lista
+  void _refreshTickets() {
+     setState(() {
+      _ticketsFuture = _fetchAssignedTickets();
+    });
+  }
+
   /// Função para buscar os tickets atribuídos a este técnico
   Future<List<Ticket>> _fetchAssignedTickets() async {
+    // 💡 Ajustei a URI para incluir o token de autorização no cabeçalho
     final uri = Uri.parse('$API_BASE_URL/tickets/assigned/${widget.techId}');
     
     try {
-      final response = await http.get(uri).timeout(const Duration(seconds: 15));
+      final response = await http.get(
+        uri, 
+        headers: {
+           'Content-Type': 'application/json',
+           'Authorization': 'Bearer ${widget.authToken}', 
+        }
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
         // Verifica se 'tickets' é uma lista e a mapeia para objetos Ticket
         if (data['tickets'] is List) {
+          // 💡 Adicionando filtro: Mostrar apenas tickets que NÃO estão 'COMPLETED' ou 'REJECTED'
           return (data['tickets'] as List)
               .map((json) => Ticket.fromJson(json))
+              .where((ticket) => ticket.status != 'COMPLETED' && ticket.status != 'REJECTED')
               .toList();
         }
         return []; // Retorna lista vazia se o corpo for 200, mas sem tickets
@@ -84,7 +123,8 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
         return []; 
       } else {
         // Erro na API (ex: erro 500)
-        throw Exception('Falha ao carregar tickets. Código: ${response.statusCode}');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['error'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}');
       }
     } catch (e) {
       // Erro de rede ou timeout
@@ -104,13 +144,38 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
         return Colors.green.shade500;
     }
   }
+  
+  // 💡 Mapeia o status para uma cor e texto para o Técnico
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'IN_PROGRESS': return Colors.blue.shade700;
+      case 'APPROVED': return Colors.orange.shade700;
+      default: return Colors.grey;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'IN_PROGRESS': return 'EM ANDAMENTO';
+      case 'APPROVED': return 'A INICIAR';
+      default: return status;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Meus Chamados Atribuídos'),
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: Colors.indigo.shade700, // Cor mais técnica
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshTickets, // Botão de recarregar
+            tooltip: 'Recarregar',
+          ),
+        ]
       ),
       // Usa FutureBuilder para lidar com os estados da chamada assíncrona
       body: FutureBuilder<List<Ticket>>(
@@ -137,11 +202,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                     const SizedBox(height: 20),
                     // Botão para tentar buscar novamente
                     ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _ticketsFuture = _fetchAssignedTickets();
-                        });
-                      },
+                      onPressed: _refreshTickets,
                       icon: const Icon(Icons.refresh),
                       label: const Text('Tentar Novamente'),
                     )
@@ -165,11 +226,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                   const SizedBox(height: 20),
                   // Botão para recarregar
                   TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _ticketsFuture = _fetchAssignedTickets();
-                      });
-                    },
+                    onPressed: _refreshTickets,
                     icon: const Icon(Icons.refresh),
                     label: const Text('Recarregar Lista'),
                   )
@@ -183,6 +240,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
               itemCount: tickets.length,
               itemBuilder: (context, index) {
                 final ticket = tickets[index];
+                
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   elevation: 4,
@@ -198,7 +256,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                       child: const Icon(Icons.build, color: Colors.white),
                     ),
                     title: Text(
-                      ticket.title,
+                      '#${ticket.id} - ${ticket.title}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Column(
@@ -208,21 +266,47 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                         Text('Cliente: ${ticket.customerName}'),
                         Text('Endereço: ${ticket.customerAddress}'),
                         const SizedBox(height: 4),
-                        Text(
-                          'Prioridade: ${ticket.priority.toUpperCase()}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: _getPriorityColor(ticket.priority),
-                          ),
+                        // Mostra o status atual
+                        Row(
+                          children: [
+                            Text(
+                              'Status: ${_getStatusText(ticket.status)}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _getStatusColor(ticket.status),
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Prioridade: ${ticket.priority.toUpperCase()}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _getPriorityColor(ticket.priority),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      // 🚨 FUTURA NAVEGAÇÃO: Detalhes do chamado para o técnico (marcar como concluído, etc.)
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Detalhes do chamado ${ticket.id}: ${ticket.description}')),
+                    // 💡 LÓGICA DE NAVEGAÇÃO PARA A TELA DE DETALHES
+                    onTap: () async {
+                      // Passa os dados do ticket como Map<String, dynamic>
+                      final needsRefresh = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TechDetailTicketScreen(
+                            authToken: widget.authToken,
+                            techId: widget.techId,
+                            ticket: ticket.toJson(), // Passa o objeto como Map
+                          ),
+                        ),
                       );
+
+                      // Se a tela de detalhes retornar 'true', significa que o ticket foi concluído
+                      if (needsRefresh == true) {
+                        _refreshTickets(); // Recarrega para remover o ticket concluído da lista
+                      }
                     },
                   ),
                 );
