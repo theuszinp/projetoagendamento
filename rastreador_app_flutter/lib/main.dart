@@ -2,19 +2,21 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-// 🚨 IMPORTAÇÕES NECESSÁRIAS PARA O FLUXO COMPLETO
-// Nota: Assumimos que essas classes existem e estão em PascalCase
-import 'create_ticket_screen.dart'; 
-import 'techdashboardscreen.dart'; 
-import 'admindashboardscreen.dart'; 
-// 💡 NOVO: Importação para a tela de lista de tickets do vendedor
-import 'SellerTicketListScreen.dart'; 
+// 🧩 Importações de telas
+import 'create_ticket_screen.dart';
+import 'techdashboardscreen.dart';
+import 'admindashboardscreen.dart';
+import 'SellerTicketListScreen.dart';
 
-// URL base do seu backend no Render
+// 🌐 URL base do backend
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 
+// 🎨 Cores oficiais da TrackerCarsat
+const Color trackerBlue = Color(0xFF322C8E);
+const Color trackerYellow = Color(0xFFFFD700);
+
 void main() {
-  runApp(const RastreadorApp()); // Renomeado MyApp para RastreadorApp
+  runApp(const RastreadorApp());
 }
 
 class RastreadorApp extends StatelessWidget {
@@ -23,21 +25,34 @@ class RastreadorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rastreador App',
+      title: 'TrackerCarsat',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // Cor primária mais vívida para um visual moderno
-        primarySwatch: Colors.deepPurple,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: trackerBlue,
+          primary: trackerBlue,
+          secondary: trackerYellow,
+        ),
         useMaterial3: true,
+        scaffoldBackgroundColor: Colors.white,
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: trackerBlue,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
       ),
-      // Começa o app na tela de login
       home: const LoginPage(),
     );
   }
 }
 
-// ===============================================
-// TELA DE LOGIN 
-// ===============================================
+// =====================================================
+// 🧭 TELA DE LOGIN
+// =====================================================
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -47,406 +62,347 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Controladores para capturar o texto dos campos
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  
+
   bool _isLoading = false;
 
-  /// Função assíncrona para realizar a chamada de API de login
   Future<void> _login() async {
-    // 1. Inicia o carregamento
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     final String email = _emailController.text.trim();
     final String senha = _passwordController.text;
 
-    // 2. Validação local (usa SnackBar para feedback)
     if (email.isEmpty || senha.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Por favor, preencha todos os campos.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, preencha todos os campos.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       setState(() => _isLoading = false);
       return;
     }
 
     try {
-      // 3. Faz a requisição POST para a sua API
       final response = await http.post(
         Uri.parse('$API_BASE_URL/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'senha': senha,
-        }),
-      ).timeout(const Duration(seconds: 15));
+        body: jsonEncode({'email': email, 'senha': senha}),
+      );
 
       if (response.statusCode == 200) {
-        // 4. Sucesso no login!
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        
-        final role = data['role'];
-        final token = data['token'] ?? 'fake-token-do-db'; 
-        // Garante que userId seja um inteiro, que é o esperado para a rota
-        final userId = (data['id'] is int) ? data['id'] : int.tryParse(data['id'].toString()) ?? 0;
+        final data = jsonDecode(response.body);
+        final role = (data['role'] ?? '').toString().toLowerCase();
+        final token = data['token'] ?? 'fake-token';
+        final userId = int.tryParse(data['id'].toString()) ?? 0;
 
-        if (mounted) {
-          // Usa pushReplacement para que o usuário não possa voltar para o login
-          
-          // >>> REDIRECIONAMENTO FINAL (ADMINISTRADOR BYPASS A HOMESCREEN) <<<
-          if (role == 'admin') {
-            // Admin vai DIRETAMENTE para o Admin Dashboard
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                // Passando o userId, conforme exigido pelo construtor AdminDashboardScreen
-                builder: (context) => AdminDashboardScreen(
-                  authToken: token,
-                  userId: userId, 
-                ), 
-              ),
-            );
-          } else {
-            // Vendedor ('seller' ou 'vendedor') e Técnico ('tech') vão para a HomeScreen
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => HomeScreen(userData: data, authToken: token)), // 💡 NOVO: Passando o token
-            );
-          }
+        // Redireciona conforme a função do usuário
+        if (role == 'admin') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  AdminDashboardScreen(authToken: token, userId: userId),
+            ),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  HomeScreen(userData: data, authToken: token),
+            ),
+          );
         }
-
       } else {
-        // 5. Falha no login (ex: credenciais inválidas)
-        try {
-            final errorData = jsonDecode(response.body);
-            final message = errorData['error'] ?? 'Erro de login. Verifique as credenciais.'; 
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(message),
-                  backgroundColor: Colors.red.shade700,
-                ),
-              );
-            }
-        } catch (_) {
-              // Caso a resposta não seja JSON (erros genéricos ou servidor retornando HTML)
-              if (mounted) {
-               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Erro na API. O servidor pode estar inativo ou o endpoint está incorreto.'),
-                    backgroundColor: Colors.deepOrange,
-                  ),
-                );
-        }
-        }
-      }
-    } catch (e) {
-      // 6. Erro de rede, timeout, ou servidor
-      if (mounted) {
+        final errorData = jsonDecode(response.body);
+        final message = errorData['error'] ?? 'Erro ao fazer login.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erro de conexão. Verifique sua rede e a API.'),
-            backgroundColor: Colors.deepOrange,
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
         );
       }
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erro de conexão. Verifique sua internet.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     } finally {
-      // 7. Finaliza o carregamento
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rastreador App'),
-        backgroundColor: Theme.of(context).primaryColor,
-        elevation: 4,
-      ),
-      // O SingleChildScrollView evita que o teclado cause overflow/quebra na tela
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              // Título ou Logo
-              Text(
-                'Bem-Vindo',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // Campo de E-mail (Com UX melhorado)
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  labelText: 'E-mail',
-                  prefixIcon: const Icon(Icons.email),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  focusedBorder: OutlineInputBorder( // Borda com a cor do tema
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              
-              // Campo de Senha (Com UX melhorado)
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Senha',
-                  prefixIcon: const Icon(Icons.lock),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-              
-              // Botão de Login (Com Loading integrado)
-              ElevatedButton(
-                // Desabilita o botão se estiver carregando
-                onPressed: _isLoading ? null : _login,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor, 
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50), // Botão de largura total
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 5,
-                ),
-                child: _isLoading
-                    ? const SizedBox( // Indicador de carregamento
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
-                        )
-                    : const Text(
-                        'Entrar', 
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
-                      ),
-              ),
-              
-              const SizedBox(height: 20),
-              
-            ],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 🌄 Imagem de fundo
+          Image.asset(
+            'assets/background.png',
+            fit: BoxFit.cover,
+            color: Colors.black.withOpacity(0.4),
+            colorBlendMode: BlendMode.darken,
           ),
-        ),
+
+          // 🧱 Formulário centralizado
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Card(
+                    elevation: 10,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    color: Colors.white.withOpacity(0.9),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Bem-vindo',
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: trackerYellow,
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+                          TextField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: InputDecoration(
+                              labelText: 'E-mail',
+                              prefixIcon: const Icon(Icons.email_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            decoration: InputDecoration(
+                              labelText: 'Senha',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: trackerBlue,
+                              minimumSize: const Size(double.infinity, 50),
+                            ),
+                            child: _isLoading
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                  )
+                                : const Text(
+                                    'Entrar',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  // 🖋️ Assinatura fixa
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.code, color: Colors.white70, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        'Desenvolvido por theusdev',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ===============================================
-// TELA DE HOME (MENU PRINCIPAL)
-// Exclusiva para Vendedor ('vendedor' ou 'seller') e Técnico ('tech')
-// ===============================================
+// =====================================================
+// 🏠 HOME SCREEN (Vendedor / Técnico)
+// =====================================================
 
 class HomeScreen extends StatelessWidget {
   final Map<String, dynamic> userData;
-  final String authToken; // 💡 NOVO: Recebe o token de autenticação
+  final String authToken;
 
-  const HomeScreen({super.key, required this.userData, required this.authToken}); // 💡 NOVO: Adicionado authToken
+  const HomeScreen({
+    super.key,
+    required this.userData,
+    required this.authToken,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Extração dos dados do usuário logado
-    String userName = userData['name'] ?? 'Usuário Desconhecido';
-    String userRole = userData['role'] ?? 'Sem Cargo';
-    
-    // 💡 IMPORTANTE: Normalizamos para minúsculas para garantir que 'Seller' ou 'seller' funcione
-    final String normalizedRole = userRole.toLowerCase(); 
+    final String userName = userData['name'] ?? 'Usuário';
+    final String userRole = (userData['role'] ?? '').toString().toLowerCase();
+    final int userId = int.tryParse(userData['id'].toString()) ?? 0;
 
-    // Garante que userId seja um inteiro, que é o esperado para a rota
-    int userId = (userData['id'] is int) ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0;
-    String userEmail = userData['email'] ?? 'Sem E-mail';
-    String rawData = jsonEncode(userData); // Para mostrar no debug
-    
-    // Lista de Widgets de Ação (para evitar repetição de código)
-    List<Widget> actionButtons = [];
-    
-    // Verifica se é VENDEDOR (SELLER)
-    if (normalizedRole == 'vendedor' || normalizedRole == 'seller') {
-      
-      // 1. Botão de Criar Novo Agendamento (já existia)
-      actionButtons.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10.0),
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.add_to_photos_rounded),
-            label: const Text('Novo Agendamento', style: TextStyle(fontSize: 16)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CreateTicketScreen(
-                    requestedByUserId: userId, // Passa o ID do Vendedor
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade600,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+    final List<Widget> actionButtons = [];
+
+    // 🔹 Botões do vendedor
+    if (userRole == 'seller' || userRole == 'vendedor') {
+      actionButtons.addAll([
+        ElevatedButton.icon(
+          icon: const Icon(Icons.add_circle_outline),
+          label: const Text('Novo Agendamento'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green.shade700,
+            minimumSize: const Size(double.infinity, 50),
           ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CreateTicketScreen(requestedByUserId: userId),
+              ),
+            );
+          },
         ),
-      );
-      
-      // 🚨 NOVO: 2. Botão de Ver Status dos Agendamentos (SellerTicketListScreen)
-      actionButtons.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10.0),
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.list_alt_rounded),
-            label: const Text('Status dos Meus Agendamentos', style: TextStyle(fontSize: 16)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SellerTicketListScreen(
-                    authToken: authToken, // Passa o Token
-                    userId: userId, // Passa o ID do Vendedor
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade700, // Cor diferente para distinção
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.list_alt),
+          label: const Text('Status dos Meus Agendamentos'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue.shade700,
+            minimumSize: const Size(double.infinity, 50),
           ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    SellerTicketListScreen(authToken: authToken, userId: userId),
+              ),
+            );
+          },
+        ),
+      ]);
+    }
+
+    // 🔧 Botão do técnico
+    if (userRole == 'tech' || userRole == 'técnico') {
+      actionButtons.add(
+        ElevatedButton.icon(
+          icon: const Icon(Icons.build_circle),
+          label: const Text('Meus Chamados (Técnico)'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: trackerBlue,
+            minimumSize: const Size(double.infinity, 50),
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    TechDashboardScreen(techId: userId, authToken: authToken),
+              ),
+            );
+          },
         ),
       );
     }
-    
-    // Verifica se é TÉCNICO (TECH)
-    if (normalizedRole == 'tech') {
-      // Botão de Chamados do Técnico (já existia)
-      actionButtons.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10.0),
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.build_circle),
-            label: const Text('Meus Chamados (Técnico)', style: TextStyle(fontSize: 16)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TechDashboardScreen(
-                    techId: userId, // Passa o ID do Técnico
-                    authToken: authToken, // 💡 ADIÇÃO PARA CORRIGIR O ERRO
-                  ),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-        ),
-      );
-    }
-        
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bem-Vindo(a)'),
-        automaticallyImplyLeading: false, 
-        backgroundColor: Theme.of(context).primaryColor,
+        title: const Text('Painel Principal'),
+        backgroundColor: trackerBlue,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
         actions: [
-          // Botão de Sair que retorna para a tela de Login
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
+            icon: const Icon(Icons.logout),
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (context) => const LoginPage()),
-                (Route<dynamic> route) => false, // Remove todas as rotas anteriores
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
               );
             },
-          )
+          ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Olá, $userName!', 
-                style: Theme.of(context).textTheme.headlineMedium!.copyWith(
-                  color: Theme.of(context).primaryColor
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-
-              Text('Você está logado como ${userRole.toUpperCase()}.', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 30),
-
-              // Exibe os botões de ação gerados (Novo Agendamento e/ou Lista de Status)
-              ...actionButtons,
-              
-              const SizedBox(height: 50),
-
-              // Detalhes e Debug
-              const Text('Detalhes do Login:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('E-mail: $userEmail'),
-              Text('ID: $userId'),
-              
-              const SizedBox(height: 30),
-              
-              const Text('Raw Data (Debug):', style: TextStyle(fontWeight: FontWeight.bold)),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  rawData,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic),
-                ),
-              ),
-            ],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/background.png',
+            fit: BoxFit.cover,
+            color: Colors.black.withOpacity(0.3),
+            colorBlendMode: BlendMode.darken,
           ),
-        ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Text(
+                    'Bem-vindo(a), $userName!',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: trackerYellow,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Cargo: ${userRole.toUpperCase()}',
+                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                  ),
+                  const SizedBox(height: 30),
+                  ...actionButtons,
+                  const SizedBox(height: 40),
+                  // 🖋️ Assinatura na home também
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.code, color: Colors.white70, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        'Desenvolvido por theusdev',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
