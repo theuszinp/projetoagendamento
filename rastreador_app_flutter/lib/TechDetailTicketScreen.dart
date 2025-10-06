@@ -74,7 +74,8 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
             },
             body: jsonEncode({
               'new_status': newStatus,
-              'tech_id': widget.techId,
+              // ✅ CORREÇÃO: Usando 'user_id' em vez de 'tech_id' para bater com o backend
+              'user_id': widget.techId, 
             }),
           )
           .timeout(const Duration(seconds: 15));
