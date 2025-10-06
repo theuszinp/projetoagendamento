@@ -417,7 +417,7 @@ app.put('/tickets/:id/reject', async (req, res) => {
 // 🆕 Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (USADO PELO TÉCNICO)
 // O técnico pode mudar o status para 'IN_PROGRESS' ou 'COMPLETED'.
 app.put('/tickets/:id/status', async (req, res) => {
-    const ticketId = req.params.id;
+    const ticketIdParam = req.params.id;
     // O novo status (ex: 'IN_PROGRESS', 'COMPLETED') e o ID do usuário que está atualizando
     const { new_status, user_id } = req.body;
 
@@ -425,7 +425,16 @@ app.put('/tickets/:id/status', async (req, res) => {
     if (!new_status || !user_id) {
         return res.status(400).json({ error: 'Os campos new_status e user_id são obrigatórios.' });
     }
+    
+    // ✅ CORREÇÃO: parseInt para garantir tipo numérico antes do uso no PostgreSQL
+    const ticketId = parseInt(ticketIdParam, 10);
+    const userId = parseInt(user_id, 10);
 
+    // Valida se a conversão foi bem-sucedida
+    if (isNaN(ticketId) || isNaN(userId)) {
+        return res.status(400).json({ error: 'O ID do ticket ou do usuário não é um número válido.' });
+    }
+    
     // O status deve ser um dos permitidos para atualização de técnico
     const validStatus = ['IN_PROGRESS', 'COMPLETED'];
     if (!validStatus.includes(new_status)) {
@@ -436,10 +445,11 @@ app.put('/tickets/:id/status', async (req, res) => {
         // 2. Verifica se o usuário é um técnico e se ele está ATRIBUÍDO ao ticket
         const authCheck = await pool.query(
             // Checa: 1. O usuário é um 'tech'? 2. O ticket está atribuído a ele? 3. O status atual não é REJECTED ou COMPLETED (se for, não deveria mudar de novo)
+            // Usando os IDs convertidos (ticketId e userId)
             `SELECT t.status FROM tickets t
              JOIN users u ON u.id = $2
              WHERE t.id = $1 AND t.assigned_to = $2 AND u.role = 'tech'`,
-            [ticketId, user_id]
+            [ticketId, userId] // Usando os inteiros
         );
 
         if (authCheck.rows.length === 0) {
@@ -452,7 +462,7 @@ app.put('/tickets/:id/status', async (req, res) => {
             `UPDATE tickets
              SET status = $1, completed_at = CASE WHEN $1 = 'COMPLETED' THEN now() ELSE completed_at END
              WHERE id = $2 AND assigned_to = $3 RETURNING *`,
-            [new_status, ticketId, user_id]
+            [new_status, ticketId, userId] // Usando os inteiros
         );
 
         const ticket = result.rows[0];
@@ -468,6 +478,7 @@ app.put('/tickets/:id/status', async (req, res) => {
 
     } catch (err) {
         console.error('Erro em PUT /tickets/:id/status:', err);
+        // O erro 'inconsistent types' geralmente vem daqui, por isso a conversão é essencial
         res.status(500).json({ error: 'Erro ao atualizar status do ticket.', details: err.message });
     }
 });
@@ -475,7 +486,14 @@ app.put('/tickets/:id/status', async (req, res) => {
 
 // 9️⃣ Rota: Técnico lista tickets aprovados (Somente status = 'APPROVED' e 'IN_PROGRESS')
 app.get('/tickets/assigned/:tech_id', async (req, res) => {
-    const techId = req.params.tech_id;
+    const techIdParam = req.params.tech_id;
+    
+    // ✅ CORREÇÃO: parseInt para garantir tipo numérico
+    const techId = parseInt(techIdParam, 10);
+    
+    if (isNaN(techId)) {
+         return res.status(400).json({ error: 'O ID do técnico fornecido não é um número válido.' });
+    }
 
     try {
         const result = await pool.query(
@@ -487,7 +505,7 @@ app.get('/tickets/assigned/:tech_id', async (req, res) => {
              LEFT JOIN users u ON t.approved_by = u.id
              WHERE t.status IN ('APPROVED', 'IN_PROGRESS') AND t.assigned_to = $1
              ORDER BY t.created_at DESC`,
-            [techId]
+            [techId] // Usando o inteiro
         );
         res.json({ tickets: result.rows });
     } catch (err) {
@@ -538,4 +556,4 @@ app.listen(PORT, () => {
     // Exibe corretamente a URL base (Render ou local)
     const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
     console.log(`Base URL: ${baseUrl}`);
-    });
+});
