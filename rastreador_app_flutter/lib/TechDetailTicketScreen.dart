@@ -71,7 +71,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
           'Authorization': 'Bearer ${widget.authToken}',
         },
         body: jsonEncode({
-          'status': newStatus,
+          'new_status': newStatus, // Ajustado para 'new_status' para bater com o server.js
           'tech_id': widget.techId, // Envia o ID do Técnico logado para validação no backend
         }),
       ).timeout(const Duration(seconds: 15));
@@ -145,15 +145,31 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     required Color color, 
     required IconData icon
   }) {
-    // Se o status atual for o status desejado ou já estiver concluído/reprovado, o botão fica desabilitado
     final isCurrentStatus = _currentStatus == status;
     final isFinished = _currentStatus == 'COMPLETED' || _currentStatus == 'REJECTED';
+
+    // REGRA ESPECÍFICA PARA O BOTÃO FINALIZAR: Só pode finalizar se estiver em IN_PROGRESS
+    bool canComplete = status == 'COMPLETED' && _currentStatus == 'IN_PROGRESS';
+    
+    // REGRA ESPECÍFICA PARA O BOTÃO INICIAR: Só pode iniciar se estiver em APPROVED
+    bool canStart = status == 'IN_PROGRESS' && _currentStatus == 'APPROVED';
+
+    // Define se o botão deve estar habilitado
+    bool isEnabled = !isFinished && !_isProcessing;
+
+    if (status == 'COMPLETED') {
+        isEnabled = isEnabled && canComplete;
+    } else if (status == 'IN_PROGRESS') {
+        isEnabled = isEnabled && canStart;
+    } else {
+        // Para qualquer outro status futuro
+        isEnabled = isEnabled && !isCurrentStatus;
+    }
     
     return ElevatedButton.icon(
-      onPressed: (isCurrentStatus || isFinished || _isProcessing) 
-          ? null 
-          : () => _updateStatus(status),
-      icon: _isProcessing && !isCurrentStatus 
+      // Apenas se o isEnabled for true
+      onPressed: isEnabled ? () => _updateStatus(status) : null,
+      icon: _isProcessing && isEnabled // Mostra o loader apenas se estiver processando E o botão estiver habilitado
           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
           : Icon(icon, color: Colors.white),
       label: Text(label),
@@ -162,7 +178,8 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 50),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        elevation: isCurrentStatus ? 0 : 4,
+        // Se não estiver habilitado, reduz a elevação para dar a aparência de desabilitado
+        elevation: isEnabled ? 4 : 0, 
       ),
     );
   }

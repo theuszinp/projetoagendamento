@@ -15,6 +15,7 @@ class Ticket {
   final String priority;
   final String customerName;
   final String customerAddress;
+  final String? customerPhone; // ✅ NOVO: Adicionado Telefone
   final DateTime createdAt;
   final String status; // 💡 Adicionado Status para o Técnico ver se já iniciou
 
@@ -25,6 +26,7 @@ class Ticket {
     required this.priority,
     required this.customerName,
     required this.customerAddress,
+    this.customerPhone, // ✅ NOVO
     required this.createdAt,
     required this.status, // Novo campo
   });
@@ -40,10 +42,11 @@ class Ticket {
       priority: json['priority'] as String,
       customerName: json['customer_name'] as String,
       customerAddress: json['customer_address'] as String,
+      customerPhone: json['customer_phone'] as String?, // ✅ NOVO: Lendo Telefone (se existir)
       // Trata datas que podem vir nulas ou inválidas, usando now() como fallback seguro
       createdAt: json['created_at'] != null
-        ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
-        : DateTime.now(),
+          ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
+          : DateTime.now(),
       // Assumindo que o backend retorna o status
       status: json['status'] as String? ?? 'APPROVED',
     );
@@ -58,9 +61,9 @@ class Ticket {
       'priority': priority,
       'customer_name': customerName,
       'customer_address': customerAddress,
+      'customer_phone': customerPhone, // ✅ NOVO: Incluindo Telefone para a tela de detalhes
       'created_at': createdAt.toIso8601String(),
       'status': status,
-      // Se precisar de outros campos (como customer_id, phone, email, etc.), eles devem ser adicionados aqui
     };
   }
 }
@@ -103,9 +106,9 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
       final response = await http.get(
         uri,
         headers: {
-           'Content-Type': 'application/json',
-           // O token é enviado no cabeçalho Authorization
-           'Authorization': 'Bearer ${widget.authToken}',
+            'Content-Type': 'application/json',
+            // O token é enviado no cabeçalho Authorization
+            'Authorization': 'Bearer ${widget.authToken}',
         }
       ).timeout(const Duration(seconds: 15));
 
@@ -132,6 +135,8 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
       }
     } catch (e) {
       // Erro de rede ou timeout
+      // ignore: avoid_print
+      print('Erro ao buscar chamados: $e');
       throw Exception('Erro de conexão ao buscar chamados: $e');
     }
   }
