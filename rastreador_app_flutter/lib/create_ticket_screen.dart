@@ -42,7 +42,11 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final List<String> _priorities = ['Baixa', 'Média', 'Alta'];
   
   // Novo estado: Se o nome e endereço foram preenchidos pela busca, eles ficam somente leitura.
+  // MANTENHA ESTA VARIÁVEL
   bool _isClientDataReadOnly = false;
+  
+  // Variável para travar o campo do CPF/CNPJ (identifier) após a busca bem sucedida
+  bool _isIdentifierReadOnly = false;
 
   @override
   void dispose() {
@@ -69,10 +73,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     setState(() {
       _isSearching = true;
       _clientId = null; // Reseta o ID do cliente
-      _isClientDataReadOnly = false; // Permite edição enquanto busca
+      // Ao iniciar a busca/limpar, permite edição e identificador editável
+      _isClientDataReadOnly = false; 
+      _isIdentifierReadOnly = false;
       _customerNameController.clear();
       _addressController.clear();
-      _phoneNumberController.clear(); // Limpamos aqui também para garantir o estado limpo
+      _phoneNumberController.clear();
     });
 
     try {
@@ -84,15 +90,25 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         
         if (mounted) {
           setState(() {
-            // Cliente encontrado: preenche os campos e os torna somente leitura
+            // =======================================
+            // ✅ CORREÇÃO AQUI: CLIENTE EXISTENTE
+            // O cliente foi encontrado: preenche os campos e 
+            // mantém NOME/ENDEREÇO/TELEFONE EDITÁVEIS para atualização,
+            // mas trava o CPF/CNPJ (_isIdentifierReadOnly = true).
+            // =======================================
             _clientId = data['id']; 
             _customerNameController.text = data['name'] ?? 'Cliente sem nome';
-            _addressController.text = data['address'] ?? ''; // Deixa o campo limpo se não tiver endereço na API
-            _phoneNumberController.text = data['phoneNumber'] ?? ''; // Deixa o campo limpo se não tiver telefone na API
-            _isClientDataReadOnly = true; 
+            _addressController.text = data['address'] ?? ''; 
+            // Note: O backend não retorna 'phoneNumber'. Se tivesse, seria:
+            // _phoneNumberController.text = data['phoneNumber'] ?? ''; 
+            
+            // TRAVA APENAS O CAMPO DE BUSCA (CPF/CNPJ)
+            _isIdentifierReadOnly = true; 
+            // MANTÉM OS DEMAIS CAMPOS EDITÁVEIS (false)
+            _isClientDataReadOnly = false; 
           });
         }
-        _showSnackBar('✅ Cliente encontrado com sucesso!', Colors.green);
+        _showSnackBar('✅ Cliente encontrado! Revise/atualize os dados.', Colors.green);
       } else {
         // Cliente NÃO encontrado: limpa e mantém campos editáveis.
         if (mounted) {
@@ -101,9 +117,10 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             _addressController.clear();
             _phoneNumberController.clear(); 
             _isClientDataReadOnly = false; 
+            _isIdentifierReadOnly = false;
           });
         }
-        _showSnackBar('⚠️ Cliente não encontrado. Preencha os dados manualmente.', Colors.red);
+        _showSnackBar('⚠️ Cliente não encontrado. Preencha os dados para novo cadastro.', Colors.red);
       }
     } catch (e) {
       _showSnackBar('❌ Erro de conexão ao buscar cliente.', Colors.deepOrange);
@@ -134,7 +151,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     }
     
     // --- LÓGICA DE VALIDAÇÃO CONDICIONAL ---
-    // O Nome do Cliente é sempre obrigatório.
+    // O Nome do Cliente é sempre obrigatório (mesmo que existente).
     if (_customerNameController.text.trim().isEmpty) {
         _showSnackBar('⚠️ O Nome do Cliente é obrigatório.', Colors.red);
         return;
@@ -157,7 +174,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
           return;
       }
     }
-    // Se o cliente é existente, Endereço e Telefone são opcionais (podem ser alterados ou deixados em branco).
+    // Se o cliente é existente (_clientId != null), os campos Endereço e Telefone 
+    // são OPCIONAIS, mas se preenchidos, serão usados para ATUALIZAR o registro.
 
 
     if (!mounted) return;
@@ -219,7 +237,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     setState(() {
       _clientId = null;
       _selectedPriority = null;
-      _isClientDataReadOnly = false;
+      // Reseta todas as flags de readOnly
+      _isClientDataReadOnly = false; 
+      _isIdentifierReadOnly = false;
     });
     _titleController.clear();
     _customerNameController.clear();
@@ -247,13 +267,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
     // Define os textos dos labels condicionalmente
     final bool isNewClient = _clientId == null;
-    final String nameLabel = _isClientDataReadOnly ? 'Nome Completo (Preenchido Automaticamente)' : 'Nome Completo (Obrigatório)';
-    final String phoneLabel = _isClientDataReadOnly 
-      ? 'Número de Contato (Auto)' 
-      : isNewClient ? 'Número de Contato (Obrigatório para novo)' : 'Número de Contato (Opcional)';
-    final String addressLabel = _isClientDataReadOnly 
-      ? 'Endereço (Preenchido Automaticamente)' 
-      : isNewClient ? 'Endereço de Instalação (Obrigatório para novo)' : 'Endereço de Instalação (Opcional)';
+    final String nameLabel = isNewClient ? 'Nome Completo (Obrigatório)' : 'Nome Completo (Existente - Pode ser atualizado)';
+    final String phoneLabel = isNewClient ? 'Número de Contato (Obrigatório para novo)' : 'Número de Contato (Existente - Opcional para atualização)';
+    final String addressLabel = isNewClient ? 'Endereço de Instalação (Obrigatório para novo)' : 'Endereço de Instalação (Existente - Opcional para atualização)';
+    
+    // Label para o CPF/CNPJ
+    final String identifierLabel = _isIdentifierReadOnly ? 'CPF/CNPJ (Cliente Encontrado)' : 'CPF/CNPJ (Obrigatório para novo)';
 
 
     return Scaffold(
@@ -271,7 +290,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             children: <Widget>[
               // --- 1. SEÇÃO DE BUSCA (OPCIONAL) ---
               Text(
-                'Buscar Cliente por Identificador (Opcional)',
+                'Buscar Cliente por Identificador',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
@@ -283,7 +302,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                     child: TextFormField(
                       controller: _identifierController,
                       keyboardType: TextInputType.text,
-                      decoration: _buildInputDecoration('CPF/CNPJ do Cliente', LucideIcons.scan),
+                      // ✅ CORREÇÃO: Usa a nova flag para travar a edição APENAS deste campo
+                      readOnly: _isIdentifierReadOnly, 
+                      decoration: _buildInputDecoration(identifierLabel, LucideIcons.scan).copyWith(
+                        filled: _isIdentifierReadOnly, 
+                        fillColor: _isIdentifierReadOnly ? Colors.grey[100] : Colors.white,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -294,9 +318,13 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                           height: 48, 
                           child: Center(child: CircularProgressIndicator()))
                       : IconButton(
-                          icon: Icon(LucideIcons.search, size: 28, color: theme.primaryColor),
-                          onPressed: _searchClient,
-                          tooltip: 'Buscar Cliente',
+                          // Se o cliente foi encontrado, o botão pode ser usado para limpar (reiniciar a busca)
+                          icon: Icon(_clientId != null ? LucideIcons.rotateCcw : LucideIcons.search, 
+                                     size: 28, 
+                                     color: theme.primaryColor),
+                          // Se o cliente foi encontrado, chama o _clearForm para resetar o estado.
+                          onPressed: _clientId != null ? _clearForm : _searchClient,
+                          tooltip: _clientId != null ? 'Limpar e pesquisar outro' : 'Buscar Cliente',
                         ),
                 ],
               ),
@@ -313,13 +341,15 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Nome do Cliente (Sempre Obrigatório)
               TextFormField(
                 controller: _customerNameController,
-                readOnly: _isClientDataReadOnly, 
+                // ✅ CORREÇÃO: readOnly deve ser FALSE quando cliente encontrado para permitir a edição
+                readOnly: false, // Permitir edição sempre (a obrigatoriedade é tratada no _submitTicket)
                 decoration: _buildInputDecoration(
                   nameLabel, 
                   LucideIcons.user
                 ).copyWith(
-                  filled: _isClientDataReadOnly, 
-                  fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
+                  // Mantido como sugestão de estilo para campos preenchidos
+                  filled: _clientId != null, 
+                  fillColor: _clientId != null ? Colors.yellow[50] : Colors.white,
                 ),
                 validator: (value) {
                   return null; // Validação de obrigatoriedade no _submitTicket
@@ -330,7 +360,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Telefone (Obrigatório para novo, Opcional para existente)
               TextFormField(
                 controller: _phoneNumberController,
-                readOnly: _isClientDataReadOnly, 
+                // ✅ CORREÇÃO: readOnly deve ser FALSE quando cliente encontrado para permitir a edição
+                readOnly: false, // Permitir edição
                 keyboardType: TextInputType.phone, 
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly, 
@@ -339,8 +370,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   phoneLabel, 
                   LucideIcons.phone
                 ).copyWith(
-                  filled: _isClientDataReadOnly, 
-                  fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
+                  filled: _clientId != null, 
+                  fillColor: _clientId != null ? Colors.yellow[50] : Colors.white,
                 ),
                 validator: (value) {
                   return null; // Validação de obrigatoriedade no _submitTicket
@@ -351,15 +382,16 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Endereço (Obrigatório para novo, Opcional para existente)
               TextFormField(
                 controller: _addressController,
-                readOnly: _isClientDataReadOnly, 
+                // ✅ CORREÇÃO: readOnly deve ser FALSE quando cliente encontrado para permitir a edição
+                readOnly: false, // Permitir edição
                 maxLines: 3,
                 keyboardType: TextInputType.streetAddress,
                 decoration: _buildInputDecoration(
                   addressLabel, 
                   LucideIcons.mapPin
                 ).copyWith(
-                  filled: _isClientDataReadOnly, 
-                  fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
+                  filled: _clientId != null, 
+                  fillColor: _clientId != null ? Colors.yellow[50] : Colors.white,
                 ),
                 validator: (value) {
                   return null; // Validação de obrigatoriedade no _submitTicket
@@ -375,6 +407,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
 
+              // ... (Demais campos do ticket permanecem inalterados) ...
+              
               // Campo Título (OBRIGATÓRIO)
               TextFormField(
                 controller: _titleController,
