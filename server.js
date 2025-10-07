@@ -160,7 +160,8 @@ app.get('/clients/search', async (req, res) => {
 
     try {
         const clientResult = await pool.query(
-            'SELECT id, name, address, identifier FROM customers WHERE identifier = $1',
+            // ✅ CORREÇÃO: Adicionando phone_number (assumindo a coluna na DB é phone_number)
+            'SELECT id, name, address, identifier, phone_number FROM customers WHERE identifier = $1', 
             [identifier]
         );
         const client = clientResult.rows[0];
@@ -172,7 +173,9 @@ app.get('/clients/search', async (req, res) => {
         res.json({
             id: client.id,
             name: client.name,
-            address: client.address
+            address: client.address,
+            // ✅ CORREÇÃO: Retornando phoneNumber (formato camelCase para o Flutter)
+            phoneNumber: client.phone_number 
         });
 
     } catch (err) {
@@ -184,10 +187,22 @@ app.get('/clients/search', async (req, res) => {
 
 // 6️⃣ Rota: Vendedora cria ticket (Suporte a Cliente Novo/Existente)
 app.post('/ticket', async (req, res) => {
-    const { title, description, priority, requestedBy, clientId, customerName, address, identifier } = req.body;
+    // ✅ CORREÇÃO: Adicionando phoneNumber na desestruturação
+    const { title, description, priority, requestedBy, clientId, customerName, address, identifier, phoneNumber } = req.body;
 
-    if (!title || !description || !priority || !requestedBy || !customerName || !address) {
-        return res.status(400).json({ error: 'Campos essenciais (título, descrição, prioridade, solicitante, nome e endereço) são obrigatórios.' });
+    // Ajuste na validação: Telefone e Endereço devem ser obrigatórios junto com o ID para cliente NOVO (quando clientId não existe)
+    if (!title || !description || !priority || !requestedBy || !customerName) {
+        return res.status(400).json({ error: 'Campos essenciais (título, descrição, prioridade, solicitante, nome) são obrigatórios.' });
+    }
+    
+    // Validação condicional se for cliente NOVO
+    if (!clientId && (!address || !phoneNumber || !identifier)) {
+        return res.status(400).json({ error: 'Para novo cliente, endereço, telefone e CPF/CNPJ são obrigatórios.' });
+    }
+    
+    // Se for cliente EXISTENTE (clientId existe), Endereço e Telefone ainda são cruciais para a atualização no bloco 'else'.
+    if (clientId && (!address || !phoneNumber)) {
+        return res.status(400).json({ error: 'O endereço e o telefone do cliente são obrigatórios, mesmo para clientes existentes.' });
     }
 
     const clientDB = await pool.connect();
@@ -198,11 +213,6 @@ app.post('/ticket', async (req, res) => {
 
         // Lógica de Cliente NOVO
         if (!clientId) {
-            if (!identifier) {
-                await clientDB.query('ROLLBACK');
-                return res.status(400).json({ error: 'O identificador (CPF/CNPJ) é obrigatório para cadastrar um novo cliente.' });
-            }
-
             // Garante que o identificador (CPF/CNPJ) não existe ainda para evitar duplicidade
             const existingIdResult = await clientDB.query(
                 'SELECT id FROM customers WHERE identifier = $1',
@@ -216,8 +226,9 @@ app.post('/ticket', async (req, res) => {
 
             // Cria o novo cliente
             const newClientResult = await clientDB.query(
-                'INSERT INTO customers (name, address, identifier) VALUES ($1, $2, $3) RETURNING id',
-                [customerName, address, identifier]
+                // ✅ CORREÇÃO: Adicionando phone_number no INSERT
+                'INSERT INTO customers (name, address, identifier, phone_number) VALUES ($1, $2, $3, $4) RETURNING id',
+                [customerName, address, identifier, phoneNumber]
             );
             finalClientId = newClientResult.rows[0].id;
 
@@ -232,10 +243,11 @@ app.post('/ticket', async (req, res) => {
                 return res.status(404).json({ error: 'Cliente existente não encontrado com o ID fornecido.' });
             }
 
-            // 💡 MELHORIA: Atualiza o nome e endereço do cliente na tabela principal com os dados mais recentes da vendedora
+            // 💡 MELHORIA: Atualiza o nome, endereço E TELEFONE do cliente na tabela principal com os dados mais recentes da vendedora
             await clientDB.query(
-                'UPDATE customers SET name = $1, address = $2 WHERE id = $3',
-                [customerName, address, clientId]
+                // ✅ CORREÇÃO: Adicionando phone_number no UPDATE
+                'UPDATE customers SET name = $1, address = $2, phone_number = $3 WHERE id = $4',
+                [customerName, address, phoneNumber, clientId]
             );
             finalClientId = clientId;
         }
@@ -284,7 +296,7 @@ app.put('/tickets/:id/approve', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // 🚨 PASSO 1: VERIFICAR ADMIN
+        
         const userRes = await client.query(
             'SELECT role FROM users WHERE id = $1',
             [admin_id]
@@ -296,7 +308,7 @@ app.put('/tickets/:id/approve', async (req, res) => {
             return res.status(403).json({ error: 'Apenas usuários com o cargo de admin podem aprovar tickets.' });
         }
 
-        // 🚨 PASSO 2: VERIFICAR E GARANTIR QUE UM TÉCNICO VÁLIDO FOI ATRIBUÍDO
+        
         if (!assigned_to) {
             await client.query('ROLLBACK');
             // Retorna 400 para o Flutter saber que falta a seleção do técnico
@@ -492,7 +504,7 @@ app.get('/tickets/assigned/:tech_id', async (req, res) => {
     const techId = parseInt(techIdParam, 10);
     
     if (isNaN(techId)) {
-         return res.status(400).json({ error: 'O ID do técnico fornecido não é um número válido.' });
+           return res.status(400).json({ error: 'O ID do técnico fornecido não é um número válido.' });
     }
 
     try {
