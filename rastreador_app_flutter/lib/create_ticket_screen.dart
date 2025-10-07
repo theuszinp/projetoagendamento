@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Import necessário para o Filter
+import 'package:flutter/services.dart'; 
 import 'package:http/http.dart' as http;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -34,7 +34,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _identifierController = TextEditingController(); // Usado para busca (CPF/CNPJ)
-  final TextEditingController _phoneNumberController = TextEditingController(); // <--- NOVO CONTROLADOR PARA O NÚMERO
+  final TextEditingController _phoneNumberController = TextEditingController(); 
   
   bool _isLoading = false;
   bool _isSearching = false;
@@ -51,7 +51,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     _addressController.dispose();
     _descriptionController.dispose();
     _identifierController.dispose();
-    _phoneNumberController.dispose(); // <--- DISPOSE NOVO CONTROLADOR
+    _phoneNumberController.dispose(); 
     super.dispose();
   }
 
@@ -72,7 +72,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       _isClientDataReadOnly = false; // Permite edição enquanto busca
       _customerNameController.clear();
       _addressController.clear();
-      // _phoneNumberController.clear(); // Não limpamos o número, pois ele é opcional na busca
+      _phoneNumberController.clear(); // Limpamos aqui também para garantir o estado limpo
     });
 
     try {
@@ -87,9 +87,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             // Cliente encontrado: preenche os campos e os torna somente leitura
             _clientId = data['id']; 
             _customerNameController.text = data['name'] ?? 'Cliente sem nome';
-            _addressController.text = data['address'] ?? 'Endereço não fornecido';
-            // Se a API retornar o telefone, preencha:
-            _phoneNumberController.text = data['phoneNumber'] ?? ''; // <--- Puxa o número se houver
+            _addressController.text = data['address'] ?? ''; // Deixa o campo limpo se não tiver endereço na API
+            _phoneNumberController.text = data['phoneNumber'] ?? ''; // Deixa o campo limpo se não tiver telefone na API
             _isClientDataReadOnly = true; 
           });
         }
@@ -100,6 +99,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
           setState(() {
             _customerNameController.clear();
             _addressController.clear();
+            _phoneNumberController.clear(); 
             _isClientDataReadOnly = false; 
           });
         }
@@ -122,7 +122,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   // 2. Lógica de Envio de Ticket (POST /ticket)
   // ===========================================
   Future<void> _submitTicket() async {
-    // 1. Validação do formulário Flutter
+    // 1. Validação do formulário Flutter (Título e Descrição)
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -133,19 +133,31 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       return;
     }
     
+    // --- LÓGICA DE VALIDAÇÃO CONDICIONAL ---
+    // O Nome do Cliente é sempre obrigatório.
     if (_customerNameController.text.trim().isEmpty) {
         _showSnackBar('⚠️ O Nome do Cliente é obrigatório.', Colors.red);
         return;
     }
-    if (_addressController.text.trim().isEmpty) {
-        _showSnackBar('⚠️ O Endereço de Instalação é obrigatório.', Colors.red);
-        return;
+
+    // Endereço e Telefone SÃO obrigatórios SOMENTE se o cliente for NOVO.
+    if (_clientId == null) {
+      // Novo Cliente - Todos os dados são obrigatórios para a criação.
+      if (_addressController.text.trim().isEmpty) {
+          _showSnackBar('⚠️ O Endereço de Instalação é obrigatório para novos clientes.', Colors.red);
+          return;
+      }
+      if (_phoneNumberController.text.trim().isEmpty) {
+          _showSnackBar('⚠️ O Número de Contato do Cliente é obrigatório para novos clientes.', Colors.red);
+          return;
+      }
+      // O CPF/CNPJ (identifier) também é obrigatório para novo cliente.
+      if (_identifierController.text.trim().isEmpty) {
+          _showSnackBar('⚠️ O CPF/CNPJ é obrigatório para o cadastro de um novo cliente.', Colors.red);
+          return;
+      }
     }
-    // 🚨 NOVA VALIDAÇÃO: Número do Cliente
-    if (_phoneNumberController.text.trim().isEmpty) {
-        _showSnackBar('⚠️ O Número de Contato do Cliente é obrigatório.', Colors.red);
-        return;
-    }
+    // Se o cliente é existente, Endereço e Telefone são opcionais (podem ser alterados ou deixados em branco).
 
 
     if (!mounted) return;
@@ -160,12 +172,11 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         'description': _descriptionController.text.trim(),
         'priority': _selectedPriority, 
         'requestedBy': widget.requestedByUserId,
-        'customerName': _customerNameController.text.trim(), // Enviamos sempre o nome digitado/puxado
-        'address': _addressController.text.trim(), // Enviamos sempre o endereço digitado/puxado
-        // 🚨 DADO NOVO: Adiciona o número de telefone
+        
+        // Enviamos os dados do cliente (mesmo que vazios, se opcionais)
+        'customerName': _customerNameController.text.trim(), 
+        'address': _addressController.text.trim(), 
         'phoneNumber': _phoneNumberController.text.trim(), 
-        // 🚨 CORREÇÃO: Adiciona o identificador (CPF/CNPJ) à requisição
-        // O backend precisa disso para criar um novo cliente se o 'clientId' for nulo.
         'identifier': _identifierController.text.trim(),
       };
 
@@ -215,7 +226,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     _addressController.clear();
     _descriptionController.clear();
     _identifierController.clear();
-    _phoneNumberController.clear(); // <--- LIMPA O NOVO CONTROLADOR
+    _phoneNumberController.clear(); 
   }
 
   // Helper para SnackBar
@@ -233,6 +244,17 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Define os textos dos labels condicionalmente
+    final bool isNewClient = _clientId == null;
+    final String nameLabel = _isClientDataReadOnly ? 'Nome Completo (Preenchido Automaticamente)' : 'Nome Completo (Obrigatório)';
+    final String phoneLabel = _isClientDataReadOnly 
+      ? 'Número de Contato (Auto)' 
+      : isNewClient ? 'Número de Contato (Obrigatório para novo)' : 'Número de Contato (Opcional)';
+    final String addressLabel = _isClientDataReadOnly 
+      ? 'Endereço (Preenchido Automaticamente)' 
+      : isNewClient ? 'Endereço de Instalação (Obrigatório para novo)' : 'Endereço de Instalação (Opcional)';
+
 
     return Scaffold(
       appBar: AppBar(
@@ -261,8 +283,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                     child: TextFormField(
                       controller: _identifierController,
                       keyboardType: TextInputType.text,
-                      decoration: _buildInputDecoration('CPF/CNPJ do Cliente (Opcional)', LucideIcons.scan),
-                      // Removendo o validador para tornar o campo opcional
+                      decoration: _buildInputDecoration('CPF/CNPJ do Cliente', LucideIcons.scan),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -283,75 +304,72 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // --- 2. DADOS DO CLIENTE (MANUAL OU AUTO) ---
               Text(
-                'Dados do Cliente (Obrigatório)',
+                'Dados do Cliente',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
 
-              // Campo Nome do Cliente (Agora pode ser editável)
+              // Campo Nome do Cliente (Sempre Obrigatório)
               TextFormField(
                 controller: _customerNameController,
-                readOnly: _isClientDataReadOnly, // Somente leitura se encontrado na busca
+                readOnly: _isClientDataReadOnly, 
                 decoration: _buildInputDecoration(
-                  _isClientDataReadOnly ? 'Nome Completo (Preenchido Automaticamente)' : 'Nome Completo (Obrigatório)', 
+                  nameLabel, 
                   LucideIcons.user
                 ).copyWith(
-                  filled: _isClientDataReadOnly, // Realça se for automático
+                  filled: _isClientDataReadOnly, 
                   fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
                 ),
                 validator: (value) {
-                  // A validação de obrigatoriedade agora é feita no _submitTicket
-                  return null;
+                  return null; // Validação de obrigatoriedade no _submitTicket
                 },
               ),
               const SizedBox(height: 15),
 
-              // 🚨 NOVO CAMPO: NÚMERO DO CLIENTE
+              // Campo Telefone (Obrigatório para novo, Opcional para existente)
               TextFormField(
                 controller: _phoneNumberController,
-                readOnly: _isClientDataReadOnly, // Somente leitura se encontrado na busca
-                keyboardType: TextInputType.phone, // Teclado numérico
+                readOnly: _isClientDataReadOnly, 
+                keyboardType: TextInputType.phone, 
                 inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly, // Permite apenas números
+                  FilteringTextInputFormatter.digitsOnly, 
                 ],
                 decoration: _buildInputDecoration(
-                  _isClientDataReadOnly ? 'Número de Contato (Auto)' : 'Número de Contato (Obrigatório)', 
+                  phoneLabel, 
                   LucideIcons.phone
                 ).copyWith(
-                  filled: _isClientDataReadOnly, // Realça se for automático
+                  filled: _isClientDataReadOnly, 
                   fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
                 ),
                 validator: (value) {
-                  // A validação de obrigatoriedade agora é feita no _submitTicket
-                  return null;
+                  return null; // Validação de obrigatoriedade no _submitTicket
                 },
               ),
               const SizedBox(height: 15),
 
-              // Campo Endereço (Agora pode ser editável)
+              // Campo Endereço (Obrigatório para novo, Opcional para existente)
               TextFormField(
                 controller: _addressController,
-                readOnly: _isClientDataReadOnly, // Somente leitura se encontrado na busca
+                readOnly: _isClientDataReadOnly, 
                 maxLines: 3,
                 keyboardType: TextInputType.streetAddress,
                 decoration: _buildInputDecoration(
-                  _isClientDataReadOnly ? 'Endereço (Preenchido Automaticamente)' : 'Endereço de Instalação (Obrigatório)', 
+                  addressLabel, 
                   LucideIcons.mapPin
                 ).copyWith(
-                  filled: _isClientDataReadOnly, // Realça se for automático
+                  filled: _isClientDataReadOnly, 
                   fillColor: _isClientDataReadOnly ? Colors.grey[100] : Colors.white,
                 ),
                 validator: (value) {
-                  // A validação de obrigatoriedade agora é feita no _submitTicket
-                  return null;
+                  return null; // Validação de obrigatoriedade no _submitTicket
                 },
               ),
               const SizedBox(height: 30),
 
               // --- 3. DADOS DO TICKET ---
               Text(
-                'Detalhes do Agendamento',
+                'Detalhes do Agendamento (Obrigatório)',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
@@ -394,7 +412,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               ),
               const SizedBox(height: 15),
               
-              // Campo Descrição/Detalhes
+              // Campo Descrição/Detalhes (OBRIGATÓRIO)
               TextFormField(
                 controller: _descriptionController,
                 maxLines: 3,
