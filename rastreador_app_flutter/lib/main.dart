@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui'; // Necessário para o BackdropFilter (Efeito de Vidro Fosco)
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -39,8 +40,9 @@ class RastreadorApp extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: trackerBlue,
             foregroundColor: Colors.white,
+            // Mantendo o border radius mais arredondado do Cód. 1 para o tema geral
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12), 
             ),
           ),
         ),
@@ -51,7 +53,7 @@ class RastreadorApp extends StatelessWidget {
 }
 
 // =====================================================
-// 🧭 TELA DE LOGIN
+// 🧭 TELA DE LOGIN (COM VISUAL MELHORADO DO CÓDIGO 1)
 // =====================================================
 
 class LoginPage extends StatefulWidget {
@@ -61,11 +63,48 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  
+  // Animações para o efeito de entrada do formulário
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeIn,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     setState(() => _isLoading = true);
@@ -107,6 +146,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
           );
         } else {
+          // Redireciona para a HomeScreen (Vendedor/Técnico)
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -140,106 +180,143 @@ class _LoginPageState extends State<LoginPage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 🌄 Imagem de fundo
+          // 🌄 Imagem de fundo com overlay escuro
           Image.asset(
             'assets/background.png',
             fit: BoxFit.cover,
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withOpacity(0.45),
             colorBlendMode: BlendMode.darken,
           ),
 
-          // 🧱 Formulário centralizado
+          // ✨ Formulário com efeito de vidro (frosted glass) e animação
           Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Card(
-                    elevation: 10,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    color: Colors.white.withOpacity(0.9),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Bem-vindo',
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: trackerYellow,
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter( // Efeito de Vidro Fosco
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white24, width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                          const SizedBox(height: 30),
-                          TextField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: InputDecoration(
-                              labelText: 'E-mail',
-                              prefixIcon: const Icon(Icons.email_outlined),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            decoration: InputDecoration(
-                              labelText: 'Senha',
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 30),
-                          ElevatedButton(
-                            onPressed: _isLoading ? null : _login,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: trackerBlue,
-                              minimumSize: const Size(double.infinity, 50),
-                            ),
-                            child: _isLoading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                : const Text(
-                                    'Entrar',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Título com sombra
+                            Text(
+                              'Bem-vindo',
+                              style: TextStyle(
+                                fontSize: 34,
+                                fontWeight: FontWeight.bold,
+                                color: trackerYellow,
+                                shadows: [
+                                  Shadow(
+                                    blurRadius: 10,
+                                    color: Colors.black.withOpacity(0.4),
                                   ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  // 🖋️ Assinatura fixa
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.code, color: Colors.white70, size: 18),
-                      SizedBox(width: 6),
-                      Text(
-                        'Desenvolvido por theusdev',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                          fontStyle: FontStyle.italic,
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            // Campo E-mail com preenchimento
+                            TextField(
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              style: const TextStyle(color: Colors.black87),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.9),
+                                labelText: 'E-mail',
+                                prefixIcon: const Icon(Icons.email_outlined),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            // Campo Senha com preenchimento
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: true,
+                              style: const TextStyle(color: Colors.black87),
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.9),
+                                labelText: 'Senha',
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            // Botão Entrar
+                            ElevatedButton(
+                              onPressed: _isLoading ? null : _login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: trackerBlue,
+                                minimumSize: const Size(double.infinity, 50),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 5,
+                              ),
+                              child: _isLoading
+                                  ? const CircularProgressIndicator(
+                                      color: Colors.white,
+                                    )
+                                  : const Text(
+                                      'Entrar',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ],
+                ),
               ),
+            ),
+          ),
+
+          // 🖋️ Assinatura fixa (Posicionado no Stack)
+          const Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.code, color: Colors.white70, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  'Desenvolvido por theusdev',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -249,7 +326,7 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 // =====================================================
-// 🏠 HOME SCREEN (Vendedor / Técnico)
+// 🏠 HOME SCREEN (do Código 2, com tema visual do Cód. 1)
 // =====================================================
 
 class HomeScreen extends StatelessWidget {
@@ -355,12 +432,14 @@ class HomeScreen extends StatelessWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // Fundo
           Image.asset(
             'assets/background.png',
             fit: BoxFit.cover,
             color: Colors.black.withOpacity(0.3),
             colorBlendMode: BlendMode.darken,
           ),
+          // Conteúdo central
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -372,6 +451,13 @@ class HomeScreen extends StatelessWidget {
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: trackerYellow,
+                      shadows: [
+                        // Adicionando sombra do Cód. 1 para realçar o texto
+                        Shadow(
+                          blurRadius: 5,
+                          color: Colors.black.withOpacity(0.5),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -382,7 +468,7 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 30),
                   ...actionButtons,
                   const SizedBox(height: 40),
-                  // 🖋️ Assinatura na home também
+                  // 🖋️ Assinatura na home
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+// 1. IMPORTAÇÃO DO GOOGLE FONTS
+import 'package:google_fonts/google_fonts.dart';
 
 // Substitua pelo seu BASE_URL
 const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
@@ -10,9 +12,9 @@ const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 class CreateTicketScreen extends StatefulWidget {
   // Recebe o ID do usuário logado (requested_by) da HomeScreen
   final int requestedByUserId;
-  
+
   const CreateTicketScreen({
-    super.key, 
+    super.key,
     required this.requestedByUserId,
   });
 
@@ -23,28 +25,28 @@ class CreateTicketScreen extends StatefulWidget {
 class _CreateTicketScreenState extends State<CreateTicketScreen> {
   // Chave para validação do formulário
   final _formKey = GlobalKey<FormState>();
-  
+
   // Variáveis CRÍTICAS para a API
   int? _clientId; // ID numérico retornado pela busca (OPCIONAL)
   String? _selectedPriority; // Prioridade do serviço (OBRIGATÓRIO para a API)
 
   // Controladores
-  final TextEditingController _titleController = TextEditingController(); 
+  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _identifierController = TextEditingController(); // Usado para busca (CPF/CNPJ)
-  final TextEditingController _phoneNumberController = TextEditingController(); 
-  
+  final TextEditingController _phoneNumberController = TextEditingController();
+
   bool _isLoading = false;
   bool _isSearching = false;
 
   final List<String> _priorities = ['Baixa', 'Média', 'Alta'];
-  
+
   // Novo estado: Se o nome e endereço foram preenchidos pela busca, eles ficam somente leitura.
   // MANTENHA ESTA VARIÁVEL
   bool _isClientDataReadOnly = false;
-  
+
   // Variável para travar o campo do CPF/CNPJ (identifier) após a busca bem sucedida
   bool _isIdentifierReadOnly = false;
 
@@ -55,7 +57,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     _addressController.dispose();
     _descriptionController.dispose();
     _identifierController.dispose();
-    _phoneNumberController.dispose(); 
+    _phoneNumberController.dispose();
     super.dispose();
   }
 
@@ -74,7 +76,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       _isSearching = true;
       _clientId = null; // Reseta o ID do cliente
       // Ao iniciar a busca/limpar, permite edição e identificador editável
-      _isClientDataReadOnly = false; 
+      _isClientDataReadOnly = false;
       _isIdentifierReadOnly = false;
       _customerNameController.clear();
       _addressController.clear();
@@ -87,25 +89,20 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
+
         if (mounted) {
           setState(() {
-            // =======================================
-            // ✅ CORREÇÃO AQUI: CLIENTE EXISTENTE
-            // O cliente foi encontrado: preenche os campos e 
-            // mantém NOME/ENDEREÇO/TELEFONE EDITÁVEIS para atualização,
-            // mas trava o CPF/CNPJ (_isIdentifierReadOnly = true).
-            // =======================================
-            _clientId = data['id']; 
+            // O cliente foi encontrado: preenche os campos
+            _clientId = data['id'];
             _customerNameController.text = data['name'] ?? 'Cliente sem nome';
-            _addressController.text = data['address'] ?? ''; 
+            _addressController.text = data['address'] ?? '';
             // Note: O backend não retorna 'phoneNumber'. Se tivesse, seria:
-            // _phoneNumberController.text = data['phoneNumber'] ?? ''; 
-            
+            // _phoneNumberController.text = data['phoneNumber'] ?? '';
+
             // TRAVA APENAS O CAMPO DE BUSCA (CPF/CNPJ)
-            _isIdentifierReadOnly = true; 
+            _isIdentifierReadOnly = true;
             // MANTÉM OS DEMAIS CAMPOS EDITÁVEIS (false)
-            _isClientDataReadOnly = false; 
+            _isClientDataReadOnly = false;
           });
         }
         _showSnackBar('✅ Cliente encontrado! Revise/atualize os dados.', Colors.green);
@@ -115,8 +112,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
           setState(() {
             _customerNameController.clear();
             _addressController.clear();
-            _phoneNumberController.clear(); 
-            _isClientDataReadOnly = false; 
+            _phoneNumberController.clear();
+            _isClientDataReadOnly = false;
             _isIdentifierReadOnly = false;
           });
         }
@@ -149,7 +146,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       _showSnackBar('⚠️ A prioridade do agendamento é obrigatória.', Colors.red);
       return;
     }
-    
+
     // --- LÓGICA DE VALIDAÇÃO CONDICIONAL ---
     // O Nome do Cliente é sempre obrigatório (mesmo que existente).
     if (_customerNameController.text.trim().isEmpty) {
@@ -174,7 +171,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
           return;
       }
     }
-    // Se o cliente é existente (_clientId != null), os campos Endereço e Telefone 
+    // Se o cliente é existente (_clientId != null), os campos Endereço e Telefone
     // são OPCIONAIS, mas se preenchidos, serão usados para ATUALIZAR o registro.
 
 
@@ -186,15 +183,15 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     try {
       // Cria o mapa de dados básicos
       final Map<String, dynamic> body = {
-        'title': _titleController.text.trim(), 
+        'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'priority': _selectedPriority, 
+        'priority': _selectedPriority,
         'requestedBy': widget.requestedByUserId,
-        
+
         // Enviamos os dados do cliente (mesmo que vazios, se opcionais)
-        'customerName': _customerNameController.text.trim(), 
-        'address': _addressController.text.trim(), 
-        'phoneNumber': _phoneNumberController.text.trim(), 
+        'customerName': _customerNameController.text.trim(),
+        'address': _addressController.text.trim(),
+        'phoneNumber': _phoneNumberController.text.trim(),
         'identifier': _identifierController.text.trim(),
       };
 
@@ -238,7 +235,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       _clientId = null;
       _selectedPriority = null;
       // Reseta todas as flags de readOnly
-      _isClientDataReadOnly = false; 
+      _isClientDataReadOnly = false;
       _isIdentifierReadOnly = false;
     });
     _titleController.clear();
@@ -246,7 +243,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     _addressController.clear();
     _descriptionController.clear();
     _identifierController.clear();
-    _phoneNumberController.clear(); 
+    _phoneNumberController.clear();
   }
 
   // Helper para SnackBar
@@ -270,16 +267,20 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     final String nameLabel = isNewClient ? 'Nome Completo (Obrigatório)' : 'Nome Completo (Existente - Pode ser atualizado)';
     final String phoneLabel = isNewClient ? 'Número de Contato (Obrigatório para novo)' : 'Número de Contato (Existente - Opcional para atualização)';
     final String addressLabel = isNewClient ? 'Endereço de Instalação (Obrigatório para novo)' : 'Endereço de Instalação (Existente - Opcional para atualização)';
-    
+
     // Label para o CPF/CNPJ
     final String identifierLabel = _isIdentifierReadOnly ? 'CPF/CNPJ (Cliente Encontrado)' : 'CPF/CNPJ (Obrigatório para novo)';
 
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Novo Agendamento'),
+        // 2. TÍTULO COM GOOGLE FONTS
+        title: Text(
+          'Novo Agendamento',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 20)
+        ),
         backgroundColor: theme.primaryColor,
         foregroundColor: Colors.white,
+        elevation: 4, // Adiciona uma leve sombra para o AppBar
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
@@ -291,7 +292,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // --- 1. SEÇÃO DE BUSCA (OPCIONAL) ---
               Text(
                 'Buscar Cliente por Identificador',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+                // 3. TÍTULO DE SEÇÃO COM GOOGLE FONTS
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: theme.primaryColor
+                ),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
@@ -302,29 +308,33 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                     child: TextFormField(
                       controller: _identifierController,
                       keyboardType: TextInputType.text,
-                      // ✅ CORREÇÃO: Usa a nova flag para travar a edição APENAS deste campo
-                      readOnly: _isIdentifierReadOnly, 
+                      readOnly: _isIdentifierReadOnly,
                       decoration: _buildInputDecoration(identifierLabel, LucideIcons.scan).copyWith(
-                        filled: _isIdentifierReadOnly, 
-                        fillColor: _isIdentifierReadOnly ? Colors.grey[100] : Colors.white,
+                        filled: true, // Sempre preenchido para o estilo
+                        // Destaca o campo de busca quando encontrado
+                        fillColor: _isIdentifierReadOnly ? Colors.lightGreen.shade50 : Colors.grey.shade50,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   // Botão de Busca
-                  _isSearching 
+                  _isSearching
                       ? const SizedBox(
-                          width: 48, 
-                          height: 48, 
+                          width: 48,
+                          height: 48,
                           child: Center(child: CircularProgressIndicator()))
-                      : IconButton(
-                          // Se o cliente foi encontrado, o botão pode ser usado para limpar (reiniciar a busca)
-                          icon: Icon(_clientId != null ? LucideIcons.rotateCcw : LucideIcons.search, 
-                                     size: 28, 
-                                     color: theme.primaryColor),
-                          // Se o cliente foi encontrado, chama o _clearForm para resetar o estado.
-                          onPressed: _clientId != null ? _clearForm : _searchClient,
-                          tooltip: _clientId != null ? 'Limpar e pesquisar outro' : 'Buscar Cliente',
+                      : Container(
+                          decoration: BoxDecoration(
+                            color: theme.primaryColor,
+                            borderRadius: BorderRadius.circular(16), // Arredonda o botão de ação
+                          ),
+                          child: IconButton(
+                            icon: Icon(_clientId != null ? LucideIcons.rotateCcw : LucideIcons.search,
+                                      size: 24,
+                                      color: Colors.white), // Ícone Branco
+                            onPressed: _clientId != null ? _clearForm : _searchClient,
+                            tooltip: _clientId != null ? 'Limpar e pesquisar outro' : 'Buscar Cliente',
+                          ),
                         ),
                 ],
               ),
@@ -333,7 +343,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // --- 2. DADOS DO CLIENTE (MANUAL OU AUTO) ---
               Text(
                 'Dados do Cliente',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+                // 3. TÍTULO DE SEÇÃO COM GOOGLE FONTS
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: theme.primaryColor
+                ),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
@@ -341,18 +356,16 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Nome do Cliente (Sempre Obrigatório)
               TextFormField(
                 controller: _customerNameController,
-                // ✅ CORREÇÃO: readOnly deve ser FALSE quando cliente encontrado para permitir a edição
-                readOnly: false, // Permitir edição sempre (a obrigatoriedade é tratada no _submitTicket)
+                readOnly: false, // Permitir edição sempre
                 decoration: _buildInputDecoration(
-                  nameLabel, 
+                  nameLabel,
                   LucideIcons.user
                 ).copyWith(
-                  // Mantido como sugestão de estilo para campos preenchidos
-                  filled: _clientId != null, 
-                  fillColor: _clientId != null ? Colors.yellow[50] : Colors.white,
+                  // Realça quando cliente existente
+                  fillColor: _clientId != null ? Colors.yellow.shade100 : Colors.grey.shade50,
                 ),
                 validator: (value) {
-                  return null; // Validação de obrigatoriedade no _submitTicket
+                  return null;
                 },
               ),
               const SizedBox(height: 15),
@@ -360,21 +373,19 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Telefone (Obrigatório para novo, Opcional para existente)
               TextFormField(
                 controller: _phoneNumberController,
-                // ✅ CORREÇÃO: readOnly deve ser FALSE quando cliente encontrado para permitir a edição
                 readOnly: false, // Permitir edição
-                keyboardType: TextInputType.phone, 
+                keyboardType: TextInputType.phone,
                 inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly, 
+                  FilteringTextInputFormatter.digitsOnly,
                 ],
                 decoration: _buildInputDecoration(
-                  phoneLabel, 
+                  phoneLabel,
                   LucideIcons.phone
                 ).copyWith(
-                  filled: _clientId != null, 
-                  fillColor: _clientId != null ? Colors.yellow[50] : Colors.white,
+                  fillColor: _clientId != null ? Colors.yellow.shade100 : Colors.grey.shade50,
                 ),
                 validator: (value) {
-                  return null; // Validação de obrigatoriedade no _submitTicket
+                  return null;
                 },
               ),
               const SizedBox(height: 15),
@@ -382,19 +393,17 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Endereço (Obrigatório para novo, Opcional para existente)
               TextFormField(
                 controller: _addressController,
-                // ✅ CORREÇÃO: readOnly deve ser FALSE quando cliente encontrado para permitir a edição
                 readOnly: false, // Permitir edição
                 maxLines: 3,
                 keyboardType: TextInputType.streetAddress,
                 decoration: _buildInputDecoration(
-                  addressLabel, 
+                  addressLabel,
                   LucideIcons.mapPin
                 ).copyWith(
-                  filled: _clientId != null, 
-                  fillColor: _clientId != null ? Colors.yellow[50] : Colors.white,
+                  fillColor: _clientId != null ? Colors.yellow.shade100 : Colors.grey.shade50,
                 ),
                 validator: (value) {
-                  return null; // Validação de obrigatoriedade no _submitTicket
+                  return null;
                 },
               ),
               const SizedBox(height: 30),
@@ -402,13 +411,16 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // --- 3. DADOS DO TICKET ---
               Text(
                 'Detalhes do Agendamento (Obrigatório)',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
+                // 3. TÍTULO DE SEÇÃO COM GOOGLE FONTS
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: theme.primaryColor
+                ),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
 
-              // ... (Demais campos do ticket permanecem inalterados) ...
-              
               // Campo Título (OBRIGATÓRIO)
               TextFormField(
                 controller: _titleController,
@@ -426,6 +438,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               DropdownButtonFormField<String>(
                 decoration: _buildInputDecoration('Prioridade do Serviço', LucideIcons.zap),
                 value: _selectedPriority,
+                isExpanded: true,
                 items: _priorities.map((String priority) {
                   return DropdownMenuItem<String>(
                     value: priority,
@@ -445,7 +458,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 },
               ),
               const SizedBox(height: 15),
-              
+
               // Campo Descrição/Detalhes (OBRIGATÓRIO)
               TextFormField(
                 controller: _descriptionController,
@@ -467,7 +480,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   backgroundColor: theme.primaryColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  // 4. BOTÃO ARREDONDADO
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 5,
                 ),
                 child: _isLoading
@@ -476,9 +490,10 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                         height: 24,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
                       )
-                    : const Text(
-                        'Registrar Agendamento', 
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+                    : Text(
+                        'Registrar Agendamento',
+                        // 5. TEXTO DO BOTÃO COM GOOGLE FONTS
+                        style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)
                       ),
               ),
             ],
@@ -492,10 +507,21 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   InputDecoration _buildInputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
+      // 6. CAMPOS SEMPRE PREENCHIDOS E COM FUNDO CLARO
+      filled: true,
+      fillColor: Colors.grey.shade50,
       prefixIcon: Icon(icon, color: Theme.of(context).primaryColor),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      // 7. BORDAS ARREDONDADAS (16px)
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
       ),
       contentPadding: const EdgeInsets.all(15.0),
