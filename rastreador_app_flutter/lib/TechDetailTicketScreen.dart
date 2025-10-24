@@ -63,7 +63,9 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     setState(() => _isProcessing = true);
 
     try {
-      final url = Uri.parse('$API_BASE_URL/tickets/${widget.ticket['id']}/status');
+      // 💡 CORREÇÃO APLICADA: Rota atualizada para o padrão correto do backend.
+      final url =
+          Uri.parse('$API_BASE_URL/tickets/${widget.ticket['id']}/tech-status');
 
       final response = await http
           .put(
@@ -112,7 +114,8 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        title: Text(title,
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         content: Text(content, style: GoogleFonts.poppins(fontSize: 15)),
         actions: [
           TextButton(
@@ -124,11 +127,12 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: confirmColor,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () => Navigator.pop(context, true),
-            child:
-                Text(confirmText, style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+            child: Text(confirmText,
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -138,8 +142,8 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text(message, style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
+        content: Text(message,
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -201,15 +205,18 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
             ? const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2),
               )
             : Icon(icon, color: Colors.white),
-        label: Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        label: Text(label,
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 55),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: isEnabled ? 4 : 0,
         ),
       ),
@@ -245,12 +252,13 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
             children: [
               _buildStatusCard(),
               const SizedBox(height: 25),
-
-              _buildSectionTitle('Detalhes do Chamado', LucideIcons.clipboardList),
+              _buildSectionTitle(
+                  'Detalhes do Chamado', LucideIcons.clipboardList),
               _buildDetailCard([
                 _buildDetailRow('Título', ticket['title'] ?? 'N/A'),
                 _buildDetailRow('Prioridade', ticket['priority'] ?? 'N/A'),
-                _buildDetailRow('Descrição', ticket['description'] ?? 'Sem descrição',
+                _buildDetailRow(
+                    'Descrição', ticket['description'] ?? 'Sem descrição',
                     isMultiline: true),
                 _buildDetailRow(
                   'Criado em',
@@ -265,15 +273,15 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
                 ),
               ]),
               const SizedBox(height: 25),
-
               _buildSectionTitle('Informações do Cliente', LucideIcons.user),
               _buildDetailCard([
                 _buildDetailRow('Nome', ticket['customer_name']),
-                _buildDetailRow('Endereço', ticket['customer_address'], isMultiline: true),
-                _buildDetailRow('Telefone', ticket['customer_phone'] ?? 'Não informado'),
+                _buildDetailRow('Endereço', ticket['customer_address'],
+                    isMultiline: true),
+                _buildDetailRow(
+                    'Telefone', ticket['customer_phone'] ?? 'Não informado'),
               ]),
               const SizedBox(height: 25),
-
               _buildSectionTitle('Ações de Status', LucideIcons.settings),
               const SizedBox(height: 10),
               _buildActionButton(
@@ -293,7 +301,6 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
                 color: Colors.green.shade700,
                 icon: Icons.done_all,
               ),
-
               if (_currentStatus == 'REJECTED') ...[
                 const SizedBox(height: 20),
                 Text(
@@ -340,7 +347,9 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
         Text(
           title,
           style: GoogleFonts.poppins(
-              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.indigo.shade700),
         ),
       ],
     );
@@ -365,7 +374,8 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String? value, {bool isMultiline = false}) {
+  Widget _buildDetailRow(String label, String? value,
+      {bool isMultiline = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(

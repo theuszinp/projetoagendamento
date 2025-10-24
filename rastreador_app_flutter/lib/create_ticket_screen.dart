@@ -202,13 +202,13 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     String apiPriority;
     switch (_selectedPriority) {
       case 'Baixa':
-        apiPriority = 'LOW';
+        apiPriority = 'Baixa';
         break;
       case 'Média':
-        apiPriority = 'MEDIUM';
+        apiPriority = 'Média';
         break;
       case 'Alta':
-        apiPriority = 'HIGH';
+        apiPriority = 'Alta';
         break;
       default:
         _showSnackBar('⚠️ Prioridade inválida.', Colors.red);
