@@ -368,7 +368,11 @@ class HomeScreen extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => CreateTicketScreen(requestedByUserId: userId),
+                builder: (_) => CreateTicketScreen(
+                  requestedByUserId: userId,
+                  // CORREÇÃO APLICADA AQUI: Passando o authToken
+                  authToken: authToken,
+                ),
               ),
             );
           },
