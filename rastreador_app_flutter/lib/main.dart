@@ -42,7 +42,7 @@ class RastreadorApp extends StatelessWidget {
             foregroundColor: Colors.white,
             // Mantendo o border radius mais arredondado do Cód. 1 para o tema geral
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12), 
+              borderRadius: BorderRadius.circular(12),
             ),
           ),
         ),
@@ -69,7 +69,7 @@ class _LoginPageState extends State<LoginPage>
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  
+
   // Animações para o efeito de entrada do formulário
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -132,9 +132,13 @@ class _LoginPageState extends State<LoginPage>
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final role = (data['role'] ?? '').toString().toLowerCase();
+
+        // 💡 CORREÇÃO APLICADA: Extraindo o objeto 'user' para obter 'name' e 'role'
+        final userDataMap = data['user'] as Map<String, dynamic>? ?? {};
         final token = data['token'] ?? 'fake-token';
-        final userId = int.tryParse(data['id'].toString()) ?? 0;
+
+        final role = (userDataMap['role'] ?? '').toString().toLowerCase();
+        final userId = int.tryParse(userDataMap['id'].toString()) ?? 0;
 
         // Redireciona conforme a função do usuário
         if (role == 'admin') {
@@ -150,8 +154,10 @@ class _LoginPageState extends State<LoginPage>
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  HomeScreen(userData: data, authToken: token),
+              builder: (context) => HomeScreen(
+                  userData: userDataMap,
+                  authToken:
+                      token), // Passando o mapa de dados do usuário corrigido
             ),
           );
         }
@@ -198,7 +204,8 @@ class _LoginPageState extends State<LoginPage>
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter( // Efeito de Vidro Fosco
+                    child: BackdropFilter(
+                      // Efeito de Vidro Fosco
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         padding: const EdgeInsets.all(24),
@@ -378,8 +385,8 @@ class HomeScreen extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    SellerTicketListScreen(authToken: authToken, userId: userId),
+                builder: (_) => SellerTicketListScreen(
+                    authToken: authToken, userId: userId),
               ),
             );
           },
