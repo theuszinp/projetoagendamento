@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-// 1. IMPORTAÇÃO DO GOOGLE FONTS
 import 'package:google_fonts/google_fonts.dart';
 
 // Substitua pelo seu BASE_URL
@@ -12,10 +11,13 @@ const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 class CreateTicketScreen extends StatefulWidget {
   // Recebe o ID do usuário logado (requested_by) da HomeScreen
   final int requestedByUserId;
+  // 💡 NOVIDADE: Recebe o token de autenticação
+  final String authToken;
 
   const CreateTicketScreen({
     super.key,
     required this.requestedByUserId,
+    required this.authToken, // 💡 OBRIGATÓRIO PASSAR O TOKEN AGORA
   });
 
   @override
@@ -35,7 +37,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _identifierController = TextEditingController(); // Usado para busca (CPF/CNPJ)
+  final TextEditingController _identifierController =
+      TextEditingController(); // Usado para busca (CPF/CNPJ)
   final TextEditingController _phoneNumberController = TextEditingController();
 
   bool _isLoading = false;
@@ -67,7 +70,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   Future<void> _searchClient() async {
     final identifier = _identifierController.text.trim();
     if (identifier.isEmpty) {
-      _showSnackBar('Obrigatório informar CPF/CNPJ para buscar.', Colors.orange);
+      _showSnackBar(
+          'Obrigatório informar CPF/CNPJ para buscar.', Colors.orange);
       return;
     }
 
@@ -84,8 +88,16 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     });
 
     try {
-      final url = Uri.parse('$API_BASE_URL/clients/search?identifier=$identifier');
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final url =
+          Uri.parse('$API_BASE_URL/clients/search?identifier=$identifier');
+      final response = await http.get(
+        url,
+        // 💡 Adicionado o token para proteger a rota de busca de clientes
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.authToken}',
+        },
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -105,7 +117,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             _isClientDataReadOnly = false;
           });
         }
-        _showSnackBar('✅ Cliente encontrado! Revise/atualize os dados.', Colors.green);
+        _showSnackBar(
+            '✅ Cliente encontrado! Revise/atualize os dados.', Colors.green);
+      } else if (response.statusCode == 401) {
+        _showSnackBar(
+            '🚫 Token de autenticação expirado. Faça o login novamente.',
+            Colors.red);
       } else {
         // Cliente NÃO encontrado: limpa e mantém campos editáveis.
         if (mounted) {
@@ -117,7 +134,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             _isIdentifierReadOnly = false;
           });
         }
-        _showSnackBar('⚠️ Cliente não encontrado. Preencha os dados para novo cadastro.', Colors.red);
+        _showSnackBar(
+            '⚠️ Cliente não encontrado. Preencha os dados para novo cadastro.',
+            Colors.red);
       }
     } catch (e) {
       _showSnackBar('❌ Erro de conexão ao buscar cliente.', Colors.deepOrange);
@@ -143,37 +162,58 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
     // 2. Validação dos campos obrigatórios que não usam o validador nativo do FormField
     if (_selectedPriority == null) {
-      _showSnackBar('⚠️ A prioridade do agendamento é obrigatória.', Colors.red);
+      _showSnackBar(
+          '⚠️ A prioridade do agendamento é obrigatória.', Colors.red);
       return;
     }
 
     // --- LÓGICA DE VALIDAÇÃO CONDICIONAL ---
     // O Nome do Cliente é sempre obrigatório (mesmo que existente).
     if (_customerNameController.text.trim().isEmpty) {
-        _showSnackBar('⚠️ O Nome do Cliente é obrigatório.', Colors.red);
-        return;
+      _showSnackBar('⚠️ O Nome do Cliente é obrigatório.', Colors.red);
+      return;
     }
 
     // Endereço e Telefone SÃO obrigatórios SOMENTE se o cliente for NOVO.
     if (_clientId == null) {
       // Novo Cliente - Todos os dados são obrigatórios para a criação.
       if (_addressController.text.trim().isEmpty) {
-          _showSnackBar('⚠️ O Endereço de Instalação é obrigatório para novos clientes.', Colors.red);
-          return;
+        _showSnackBar(
+            '⚠️ O Endereço de Instalação é obrigatório para novos clientes.',
+            Colors.red);
+        return;
       }
       if (_phoneNumberController.text.trim().isEmpty) {
-          _showSnackBar('⚠️ O Número de Contato do Cliente é obrigatório para novos clientes.', Colors.red);
-          return;
+        _showSnackBar(
+            '⚠️ O Número de Contato do Cliente é obrigatório para novos clientes.',
+            Colors.red);
+        return;
       }
       // O CPF/CNPJ (identifier) também é obrigatório para novo cliente.
       if (_identifierController.text.trim().isEmpty) {
-          _showSnackBar('⚠️ O CPF/CNPJ é obrigatório para o cadastro de um novo cliente.', Colors.red);
-          return;
+        _showSnackBar(
+            '⚠️ O CPF/CNPJ é obrigatório para o cadastro de um novo cliente.',
+            Colors.red);
+        return;
       }
     }
-    // Se o cliente é existente (_clientId != null), os campos Endereço e Telefone
-    // são OPCIONAIS, mas se preenchidos, serão usados para ATUALIZAR o registro.
 
+    // 💡 CORREÇÃO CRÍTICA: Mapeamento da Prioridade para o formato da API (Ex: 'LOW', 'MEDIUM', 'HIGH')
+    String apiPriority;
+    switch (_selectedPriority) {
+      case 'Baixa':
+        apiPriority = 'LOW';
+        break;
+      case 'Média':
+        apiPriority = 'MEDIUM';
+        break;
+      case 'Alta':
+        apiPriority = 'HIGH';
+        break;
+      default:
+        _showSnackBar('⚠️ Prioridade inválida.', Colors.red);
+        return;
+    }
 
     if (!mounted) return;
     setState(() {
@@ -185,7 +225,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       final Map<String, dynamic> body = {
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'priority': _selectedPriority,
+        'priority': apiPriority, // 🚀 Valor corrigido
         'requestedBy': widget.requestedByUserId,
 
         // Enviamos os dados do cliente (mesmo que vazios, se opcionais)
@@ -200,23 +240,37 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         body['clientId'] = _clientId;
       }
 
-      final response = await http.post(
-        Uri.parse('$API_BASE_URL/ticket'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('$API_BASE_URL/ticket'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization':
+                  'Bearer ${widget.authToken}', // 💡 Adicionado token
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 201) {
         _formKey.currentState!.reset();
         _clearForm();
-        _showSnackBar('✅ Agendamento criado com sucesso! Pendente de aprovação do Admin.', Colors.green);
+        _showSnackBar(
+            '✅ Agendamento criado com sucesso! Pendente de aprovação do Admin.',
+            Colors.green);
+      } else if (response.statusCode == 401) {
+        _showSnackBar(
+            '🚫 Token de autenticação expirado. Faça o login novamente.',
+            Colors.red);
       } else {
         final errorData = jsonDecode(response.body);
         String message = errorData['error'] ?? 'Falha ao criar agendamento.';
-        _showSnackBar('⚠️ Erro: $message', Colors.red);
+        _showSnackBar(
+            '⚠️ Erro: $message (Código: ${response.statusCode})', Colors.red);
       }
     } catch (e) {
-      _showSnackBar('❌ Erro de conexão. Verifique a API/Internet.', Colors.deepOrange);
+      _showSnackBar(
+          '❌ Erro de conexão. Verifique a API/Internet.', Colors.deepOrange);
       // ignore: avoid_print
       print('Erro ao enviar ticket: $e');
     } finally {
@@ -264,20 +318,27 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
     // Define os textos dos labels condicionalmente
     final bool isNewClient = _clientId == null;
-    final String nameLabel = isNewClient ? 'Nome Completo (Obrigatório)' : 'Nome Completo (Existente - Pode ser atualizado)';
-    final String phoneLabel = isNewClient ? 'Número de Contato (Obrigatório para novo)' : 'Número de Contato (Existente - Opcional para atualização)';
-    final String addressLabel = isNewClient ? 'Endereço de Instalação (Obrigatório para novo)' : 'Endereço de Instalação (Existente - Opcional para atualização)';
+    final String nameLabel = isNewClient
+        ? 'Nome Completo (Obrigatório)'
+        : 'Nome Completo (Existente - Pode ser atualizado)';
+    final String phoneLabel = isNewClient
+        ? 'Número de Contato (Obrigatório para novo)'
+        : 'Número de Contato (Existente - Opcional para atualização)';
+    final String addressLabel = isNewClient
+        ? 'Endereço de Instalação (Obrigatório para novo)'
+        : 'Endereço de Instalação (Existente - Opcional para atualização)';
 
     // Label para o CPF/CNPJ
-    final String identifierLabel = _isIdentifierReadOnly ? 'CPF/CNPJ (Cliente Encontrado)' : 'CPF/CNPJ (Obrigatório para novo)';
+    final String identifierLabel = _isIdentifierReadOnly
+        ? 'CPF/CNPJ (Cliente Encontrado)'
+        : 'CPF/CNPJ (Obrigatório para novo)';
 
     return Scaffold(
       appBar: AppBar(
         // 2. TÍTULO COM GOOGLE FONTS
-        title: Text(
-          'Novo Agendamento',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 20)
-        ),
+        title: Text('Novo Agendamento',
+            style:
+                GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 20)),
         backgroundColor: theme.primaryColor,
         foregroundColor: Colors.white,
         elevation: 4, // Adiciona uma leve sombra para o AppBar
@@ -294,10 +355,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 'Buscar Cliente por Identificador',
                 // 3. TÍTULO DE SEÇÃO COM GOOGLE FONTS
                 style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: theme.primaryColor
-                ),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
@@ -309,10 +369,14 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                       controller: _identifierController,
                       keyboardType: TextInputType.text,
                       readOnly: _isIdentifierReadOnly,
-                      decoration: _buildInputDecoration(identifierLabel, LucideIcons.scan).copyWith(
+                      decoration: _buildInputDecoration(
+                              identifierLabel, LucideIcons.scan)
+                          .copyWith(
                         filled: true, // Sempre preenchido para o estilo
                         // Destaca o campo de busca quando encontrado
-                        fillColor: _isIdentifierReadOnly ? Colors.lightGreen.shade50 : Colors.grey.shade50,
+                        fillColor: _isIdentifierReadOnly
+                            ? Colors.lightGreen.shade50
+                            : Colors.grey.shade50,
                       ),
                     ),
                   ),
@@ -326,14 +390,21 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                       : Container(
                           decoration: BoxDecoration(
                             color: theme.primaryColor,
-                            borderRadius: BorderRadius.circular(16), // Arredonda o botão de ação
+                            borderRadius: BorderRadius.circular(
+                                16), // Arredonda o botão de ação
                           ),
                           child: IconButton(
-                            icon: Icon(_clientId != null ? LucideIcons.rotateCcw : LucideIcons.search,
-                                      size: 24,
-                                      color: Colors.white), // Ícone Branco
-                            onPressed: _clientId != null ? _clearForm : _searchClient,
-                            tooltip: _clientId != null ? 'Limpar e pesquisar outro' : 'Buscar Cliente',
+                            icon: Icon(
+                                _clientId != null
+                                    ? LucideIcons.rotateCcw
+                                    : LucideIcons.search,
+                                size: 24,
+                                color: Colors.white), // Ícone Branco
+                            onPressed:
+                                _clientId != null ? _clearForm : _searchClient,
+                            tooltip: _clientId != null
+                                ? 'Limpar e pesquisar outro'
+                                : 'Buscar Cliente',
                           ),
                         ),
                 ],
@@ -345,10 +416,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 'Dados do Cliente',
                 // 3. TÍTULO DE SEÇÃO COM GOOGLE FONTS
                 style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: theme.primaryColor
-                ),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
@@ -357,12 +427,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               TextFormField(
                 controller: _customerNameController,
                 readOnly: false, // Permitir edição sempre
-                decoration: _buildInputDecoration(
-                  nameLabel,
-                  LucideIcons.user
-                ).copyWith(
+                decoration:
+                    _buildInputDecoration(nameLabel, LucideIcons.user).copyWith(
                   // Realça quando cliente existente
-                  fillColor: _clientId != null ? Colors.yellow.shade100 : Colors.grey.shade50,
+                  fillColor: _clientId != null
+                      ? Colors.yellow.shade100
+                      : Colors.grey.shade50,
                 ),
                 validator: (value) {
                   return null;
@@ -378,11 +448,11 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                 ],
-                decoration: _buildInputDecoration(
-                  phoneLabel,
-                  LucideIcons.phone
-                ).copyWith(
-                  fillColor: _clientId != null ? Colors.yellow.shade100 : Colors.grey.shade50,
+                decoration: _buildInputDecoration(phoneLabel, LucideIcons.phone)
+                    .copyWith(
+                  fillColor: _clientId != null
+                      ? Colors.yellow.shade100
+                      : Colors.grey.shade50,
                 ),
                 validator: (value) {
                   return null;
@@ -396,11 +466,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 readOnly: false, // Permitir edição
                 maxLines: 3,
                 keyboardType: TextInputType.streetAddress,
-                decoration: _buildInputDecoration(
-                  addressLabel,
-                  LucideIcons.mapPin
-                ).copyWith(
-                  fillColor: _clientId != null ? Colors.yellow.shade100 : Colors.grey.shade50,
+                decoration:
+                    _buildInputDecoration(addressLabel, LucideIcons.mapPin)
+                        .copyWith(
+                  fillColor: _clientId != null
+                      ? Colors.yellow.shade100
+                      : Colors.grey.shade50,
                 ),
                 validator: (value) {
                   return null;
@@ -413,10 +484,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 'Detalhes do Agendamento (Obrigatório)',
                 // 3. TÍTULO DE SEÇÃO COM GOOGLE FONTS
                 style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: theme.primaryColor
-                ),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: theme.primaryColor),
               ),
               const Divider(color: Colors.grey),
               const SizedBox(height: 15),
@@ -424,7 +494,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // Campo Título (OBRIGATÓRIO)
               TextFormField(
                 controller: _titleController,
-                decoration: _buildInputDecoration('Título do Serviço (Ex: Instalação Padrão)', LucideIcons.tag),
+                decoration: _buildInputDecoration(
+                    'Título do Serviço (Ex: Instalação Padrão)',
+                    LucideIcons.tag),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'O título é obrigatório.';
@@ -436,7 +508,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // Dropdown de Prioridade (OBRIGATÓRIO)
               DropdownButtonFormField<String>(
-                decoration: _buildInputDecoration('Prioridade do Serviço', LucideIcons.zap),
+                decoration: _buildInputDecoration(
+                    'Prioridade do Serviço', LucideIcons.zap),
                 value: _selectedPriority,
                 isExpanded: true,
                 items: _priorities.map((String priority) {
@@ -463,7 +536,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               TextFormField(
                 controller: _descriptionController,
                 maxLines: 3,
-                decoration: _buildInputDecoration('Descrição (Detalhes do Serviço)', LucideIcons.clipboardList),
+                decoration: _buildInputDecoration(
+                    'Descrição (Detalhes do Serviço)',
+                    LucideIcons.clipboardList),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'A descrição é obrigatória.';
@@ -481,20 +556,21 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15),
                   // 4. BOTÃO ARREDONDADO
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   elevation: 5,
                 ),
                 child: _isLoading
                     ? const SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 3),
                       )
-                    : Text(
-                        'Registrar Agendamento',
+                    : Text('Registrar Agendamento',
                         // 5. TEXTO DO BOTÃO COM GOOGLE FONTS
-                        style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)
-                      ),
+                        style: GoogleFonts.poppins(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ],
           ),

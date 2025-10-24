@@ -66,6 +66,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     });
 
     try {
+      // 💡 O endpoint está correto: /tickets/requested/:userId
       final url = Uri.parse('$API_BASE_URL/tickets/requested/${widget.userId}');
       final response = await http.get(
         url,
@@ -78,6 +79,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
+          // O backend deve retornar um objeto com a chave 'tickets'
           _allTickets = data['tickets'] ?? [];
           _isLoading = false;
         });
@@ -86,16 +88,19 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
       } else {
         final errorData = json.decode(response.body);
         setState(() {
-          _errorMessage =
-              errorData['error'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}';
+          _errorMessage = errorData['error'] ??
+              'Falha ao carregar tickets. Código: ${response.statusCode}';
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Erro de rede ou servidor.'; // Mensagem simplificada para o usuário
+        _errorMessage =
+            'Erro de rede ou servidor.'; // Mensagem simplificada para o usuário
         _isLoading = false;
       });
+      // ignore: avoid_print
+      print('Erro ao buscar tickets: $e');
     }
   }
 
@@ -129,11 +134,26 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     }
 
     final ticketId = ticket['id'].toString();
-    final techName =
-        ticket['assigned_to_name'] ?? 'Aguardando Atribuição';
+    final techName = ticket['assigned_to_name'] ?? 'Aguardando Atribuição';
     final cliente = ticket['customer_name'] ?? 'Cliente não informado';
-    final prioridade = ticket['priority'] ?? 'N/A';
-    
+    // Mapeamento da prioridade do backend (LOW/MEDIUM/HIGH) para exibição em português
+    final String prioridadeApi = ticket['priority'] ?? 'N/A';
+    String prioridadeDisplay;
+
+    switch (prioridadeApi.toUpperCase()) {
+      case 'LOW':
+        prioridadeDisplay = 'Baixa';
+        break;
+      case 'MEDIUM':
+        prioridadeDisplay = 'Média';
+        break;
+      case 'HIGH':
+        prioridadeDisplay = 'Alta';
+        break;
+      default:
+        prioridadeDisplay = 'Não Informada';
+    }
+
     // Aplica a animação de Fade
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -141,7 +161,8 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter( // Efeito de Vidro Fosco
+          child: BackdropFilter(
+            // Efeito de Vidro Fosco
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Container(
               decoration: BoxDecoration(
@@ -158,20 +179,20 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
                 ],
               ),
               child: ListTile(
-                // Cor do texto branco para contrastar com o fundo escuro
-                textColor: Colors.white, 
+                // 💡 Cor do texto e ícone definida no nível do ListTile
+                textColor: Colors.white,
                 iconColor: Colors.white70,
-                
+
                 leading: CircleAvatar(
                   backgroundColor: statusColor.withOpacity(0.2),
                   child: Icon(statusIcon, color: statusColor),
                 ),
                 title: Text(
-                  'Ticket #$ticketId: ${ticket['title'] ?? 'N/A'}', // Adicionado 'title' do Cód. 2
+                  'Ticket #$ticketId: ${ticket['title'] ?? 'N/A'}',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    color: Colors.white,
+                    color: Colors.white, // Garantir cor no título
                   ),
                 ),
                 subtitle: Column(
@@ -186,11 +207,11 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
                       Text(
                         'Técnico: $techName',
                         style: const TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w500),
+                            color: Colors.white70, fontWeight: FontWeight.w500),
                       ),
                     Text(
-                      'Prioridade: $prioridade',
+                      // 💡 Usando a prioridade mapeada
+                      'Prioridade: $prioridadeDisplay',
                       style: const TextStyle(color: Colors.white70),
                     ),
                   ],
@@ -220,9 +241,10 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
   }
 
   // ----------------------------------------------------
-  // WIDGET: CONTEÚDO DAS ABAS (Mantendo a funcionalidade do Cód. 2)
+  // WIDGET: CONTEÚDO DAS ABAS
   // ----------------------------------------------------
   Widget _buildTabView(String requiredStatus) {
+    // A filtragem funciona corretamente
     final filteredTickets = _allTickets
         .where((t) => (t['status'] ?? 'PENDING') == requiredStatus)
         .toList();
@@ -255,11 +277,11 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
 
     return ListView.builder(
       // Efeito de 'bounce' ao rolar (Melhoria visual)
-      physics: const BouncingScrollPhysics(), 
+      physics: const BouncingScrollPhysics(),
       itemCount: filteredTickets.length,
       itemBuilder: (context, index) {
-        return _buildTicketItem(
-            filteredTickets[index] as Map<String, dynamic>);
+        // Garantindo que o tipo seja um Map
+        return _buildTicketItem(filteredTickets[index] as Map<String, dynamic>);
       },
     );
   }
@@ -273,11 +295,11 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
       length: 3,
       child: Scaffold(
         // Permite que o fundo se estenda para a área da AppBar
-        extendBodyBehindAppBar: true, 
+        extendBodyBehindAppBar: true,
         appBar: AppBar(
           title: const Text('Status dos Meus Agendamentos'),
           // Torna o AppBar transparente para o efeito de fundo
-          backgroundColor: Colors.transparent, 
+          backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
           centerTitle: true,
@@ -314,16 +336,17 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   // Cores escuras para o tema
-                  colors: [Color(0xFF1A1A2E), Color(0xFF16213E)], 
+                  colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
               ),
             ),
             // 3. Conteúdo das Abas
-            // Adicionado Padding para que o conteúdo não fique sob o AppBar transparente
+            // 💡 Ajuste: Usar MediaQuery para obter a altura da AppBar e TabBar
             Padding(
-              padding: EdgeInsets.only(top: AppBar().preferredSize.height + kToolbarHeight),
+              padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + kToolbarHeight * 2),
               child: TabBarView(
                 children: [
                   _buildTabView('PENDING'),
