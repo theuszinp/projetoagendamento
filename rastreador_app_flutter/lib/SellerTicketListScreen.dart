@@ -10,6 +10,18 @@ const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 const Color trackerBlue = Color(0xFF322C8E);
 const Color trackerYellow = Color(0xFFFFD700);
 
+// 📌 DEFINIÇÃO DOS STATUS USADOS NO BACKEND:
+// 'PENDING' -> Aguardando a aprovação do Admin
+// 'APPROVED' -> Aprovado pelo Admin (Pronto para o Técnico iniciar)
+// 'IN_PROGRESS' -> O técnico iniciou a instalação
+// 'COMPLETED' -> O técnico finalizou a instalação
+// 'REJECTED' -> Reprovado pelo Admin
+
+// 💡 Definição das Abas em Português para uso nos filtros
+const String TAB_PENDENTES = 'PENDENTES';
+const String TAB_APROVADOS = 'APROVADOS';
+const String TAB_REPROVADOS = 'REPROVADOS';
+
 class SellerTicketListScreen extends StatefulWidget {
   final String authToken;
   final int userId;
@@ -26,12 +38,10 @@ class SellerTicketListScreen extends StatefulWidget {
 
 class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     with SingleTickerProviderStateMixin {
-  // A lista armazenará todos os tickets do vendedor
   List<dynamic> _allTickets = [];
   bool _isLoading = true;
   String? _errorMessage;
 
-  // Animações para entrada suave dos itens (Código 1)
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
 
@@ -66,7 +76,6 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     });
 
     try {
-      // 💡 O endpoint está correto: /tickets/requested/:userId
       final url = Uri.parse('$API_BASE_URL/tickets/requested/${widget.userId}');
       final response = await http.get(
         url,
@@ -79,11 +88,9 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
-          // O backend deve retornar um objeto com a chave 'tickets'
           _allTickets = data['tickets'] ?? [];
           _isLoading = false;
         });
-        // Inicia a animação após carregar os dados
         _animController.forward(from: 0);
       } else {
         final errorData = json.decode(response.body);
@@ -95,8 +102,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
       }
     } catch (e) {
       setState(() {
-        _errorMessage =
-            'Erro de rede ou servidor.'; // Mensagem simplificada para o usuário
+        _errorMessage = 'Erro de rede ou servidor.';
         _isLoading = false;
       });
       // ignore: avoid_print
@@ -108,35 +114,45 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
   // WIDGET: ITEM DE TICKET ESTILIZADO (VIDRO FOSCO)
   // ----------------------------------------------------
   Widget _buildTicketItem(Map<String, dynamic> ticket) {
-    final status = ticket['status'] ?? 'PENDING';
+    // Pegando status do Admin e o status de trabalho do Técnico
+    final String statusApi = ticket['status'] ?? 'PENDING';
+    final String techStatusApi = ticket['tech_status'] ?? statusApi;
+
     String statusText;
     Color statusColor;
     IconData statusIcon;
 
-    // Define as cores e ícones de status
-    switch (status) {
-      case 'APPROVED':
-        statusText = 'APROVADO';
-        statusColor = Colors.green.shade600;
-        statusIcon = Icons.check_circle;
-        break;
-      case 'REJECTED':
-        statusText = 'REPROVADO';
-        statusColor = Colors.red.shade600;
-        statusIcon = Icons.cancel;
-        break;
-      case 'PENDING':
-      default:
-        statusText = 'PENDENTE';
-        statusColor = Colors.orange.shade700;
-        statusIcon = Icons.hourglass_bottom;
-        break;
+    // Define as cores e ícones de status com a nova lógica
+    if (statusApi == 'REJECTED') {
+      // Reprovado pelo Admin - Vai para a aba "Reprovados"
+      statusText = 'REPROVADO';
+      statusColor = Colors.red.shade600;
+      statusIcon = Icons.cancel;
+    } else if (techStatusApi == 'COMPLETED') {
+      // Finalizado pelo Técnico - Vai para a aba "Aprovados"
+      statusText = 'INSTALAÇÃO REALIZADA';
+      statusColor = Colors.lightBlue.shade600;
+      statusIcon = Icons.task_alt;
+    } else if (techStatusApi == 'IN_PROGRESS') {
+      // Em andamento pelo Técnico - Vai para a aba "Pendentes"
+      statusText = 'INSTALAÇÃO EM ANDAMENTO';
+      statusColor = Colors.orange.shade700;
+      statusIcon = Icons.build_circle;
+    } else if (statusApi == 'APPROVED') {
+      // Aprovado pelo Admin, mas não iniciado - Vai para a aba "Aprovados"
+      statusText = 'AGUARDANDO TÉCNICO';
+      statusColor = Colors.green.shade600;
+      statusIcon = Icons.check_circle;
+    } else {
+      // PENDENTE (Aguardando Admin) - Vai para a aba "Pendentes"
+      statusText = 'AGUARDANDO APROVAÇÃO';
+      statusColor = Colors.grey.shade500;
+      statusIcon = Icons.hourglass_bottom;
     }
 
     final ticketId = ticket['id'].toString();
-    final techName = ticket['assigned_to_name'] ?? 'Aguardando Atribuição';
+    final techName = ticket['assigned_to_name'] ?? 'Não Atribuído';
     final cliente = ticket['customer_name'] ?? 'Cliente não informado';
-    // Mapeamento da prioridade do backend (LOW/MEDIUM/HIGH) para exibição em português
     final String prioridadeApi = ticket['priority'] ?? 'N/A';
     String prioridadeDisplay;
 
@@ -162,11 +178,9 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: BackdropFilter(
-            // Efeito de Vidro Fosco
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Container(
               decoration: BoxDecoration(
-                // Container semi-transparente para o efeito fosco
                 color: Colors.white.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.white.withOpacity(0.1)),
@@ -179,10 +193,8 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
                 ],
               ),
               child: ListTile(
-                // 💡 Cor do texto e ícone definida no nível do ListTile
                 textColor: Colors.white,
                 iconColor: Colors.white70,
-
                 leading: CircleAvatar(
                   backgroundColor: statusColor.withOpacity(0.2),
                   child: Icon(statusIcon, color: statusColor),
@@ -192,7 +204,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
-                    color: Colors.white, // Garantir cor no título
+                    color: Colors.white,
                   ),
                 ),
                 subtitle: Column(
@@ -203,14 +215,14 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
                       'Cliente: $cliente',
                       style: const TextStyle(color: Colors.white70),
                     ),
-                    if (status == 'APPROVED')
+                    // Exibe o técnico se o chamado foi aprovado ou está em andamento/completo
+                    if (statusApi != 'PENDING' && statusApi != 'REJECTED')
                       Text(
                         'Técnico: $techName',
                         style: const TextStyle(
                             color: Colors.white70, fontWeight: FontWeight.w500),
                       ),
                     Text(
-                      // 💡 Usando a prioridade mapeada
                       'Prioridade: $prioridadeDisplay',
                       style: const TextStyle(color: Colors.white70),
                     ),
@@ -225,6 +237,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
                   ),
                   child: Text(
                     statusText,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -241,16 +254,34 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
   }
 
   // ----------------------------------------------------
-  // WIDGET: CONTEÚDO DAS ABAS
+  // WIDGET: CONTEÚDO DAS ABAS (LÓGICA DE FILTRO)
   // ----------------------------------------------------
-  Widget _buildTabView(String requiredStatus) {
-    // A filtragem funciona corretamente
-    final filteredTickets = _allTickets
-        .where((t) => (t['status'] ?? 'PENDING') == requiredStatus)
-        .toList();
+  Widget _buildTabView(String tabType) {
+    final filteredTickets = _allTickets.where((t) {
+      final String statusApi = t['status'] ?? 'PENDING';
+      // Assume-se que 'tech_status' é onde o técnico coloca 'IN_PROGRESS' ou 'COMPLETED'
+      final String techStatusApi = t['tech_status'] ?? statusApi;
+
+      switch (tabType) {
+        case TAB_PENDENTES:
+          // Aba Pendentes deve ter: Aguardando Aprovação (PENDING) E Instalação em Andamento (IN_PROGRESS)
+          return statusApi == 'PENDING' || techStatusApi == 'IN_PROGRESS';
+
+        case TAB_APROVADOS:
+          // Aba Aprovados deve ter: Aprovado (APPROVED) E Instalação Realizada (COMPLETED)
+          // Excluímos o IN_PROGRESS pois ele já está na aba PENDENTES
+          return statusApi == 'APPROVED' && techStatusApi != 'IN_PROGRESS';
+
+        case TAB_REPROVADOS:
+          // Aba Reprovados deve ter: Reprovado pelo Admin (REJECTED)
+          return statusApi == 'REJECTED';
+
+        default:
+          return false;
+      }
+    }).toList();
 
     if (_isLoading) {
-      // Indicador de carregamento amarelo do tema
       return const Center(
         child: CircularProgressIndicator(color: trackerYellow),
       );
@@ -267,38 +298,43 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     }
 
     if (filteredTickets.isEmpty) {
+      String message;
+      if (tabType == TAB_PENDENTES) {
+        message = 'Nenhum chamado pendente ou em andamento encontrado.';
+      } else if (tabType == TAB_APROVADOS) {
+        message = 'Nenhum chamado aprovado ou finalizado encontrado.';
+      } else {
+        message = 'Nenhum chamado reprovado encontrado.';
+      }
+
       return Center(
         child: Text(
-          'Nenhum chamado ${requiredStatus.toLowerCase()} encontrado.',
+          message,
           style: const TextStyle(color: Colors.white70, fontSize: 16),
         ),
       );
     }
 
     return ListView.builder(
-      // Efeito de 'bounce' ao rolar (Melhoria visual)
       physics: const BouncingScrollPhysics(),
       itemCount: filteredTickets.length,
       itemBuilder: (context, index) {
-        // Garantindo que o tipo seja um Map
         return _buildTicketItem(filteredTickets[index] as Map<String, dynamic>);
       },
     );
   }
 
   // ----------------------------------------------------
-  // UI PRINCIPAL (AppBar Transparente e Fundo com Gradiente)
+  // UI PRINCIPAL
   // ----------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        // Permite que o fundo se estenda para a área da AppBar
         extendBodyBehindAppBar: true,
         appBar: AppBar(
           title: const Text('Status dos Meus Agendamentos'),
-          // Torna o AppBar transparente para o efeito de fundo
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor: Colors.white,
@@ -311,10 +347,11 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
             ),
           ],
           bottom: const TabBar(
-            indicatorColor: trackerYellow, // Cor de destaque
+            indicatorColor: trackerYellow,
             labelColor: trackerYellow,
             unselectedLabelColor: Colors.white70,
             tabs: [
+              // Nomes das abas em Português
               Tab(text: 'Pendentes'),
               Tab(text: 'Aprovados'),
               Tab(text: 'Reprovados'),
@@ -324,18 +361,17 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Fundo com Imagem (Camada mais profunda)
+            // 1. Fundo com Imagem
             Image.asset(
               'assets/background.png',
               fit: BoxFit.cover,
               color: Colors.black.withOpacity(0.55),
               colorBlendMode: BlendMode.darken,
             ),
-            // 2. Fundo com Gradiente (Melhora o visual escuro)
+            // 2. Fundo com Gradiente
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  // Cores escuras para o tema
                   colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -343,15 +379,15 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
               ),
             ),
             // 3. Conteúdo das Abas
-            // 💡 Ajuste: Usar MediaQuery para obter a altura da AppBar e TabBar
             Padding(
               padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + kToolbarHeight * 2),
               child: TabBarView(
                 children: [
-                  _buildTabView('PENDING'),
-                  _buildTabView('APPROVED'),
-                  _buildTabView('REJECTED'),
+                  // Passando as constantes em Português para o filtro
+                  _buildTabView(TAB_PENDENTES),
+                  _buildTabView(TAB_APROVADOS),
+                  _buildTabView(TAB_REPROVADOS),
                 ],
               ),
             ),
