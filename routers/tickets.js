@@ -5,15 +5,16 @@ const { authMiddleware, roleMiddleware } = require('../server'); // Importa midd
 // Checa se o arquivo firebase.js existe antes de tentar importar
 const adminFirebase = require.resolve('../firebase') ? require('../firebase') : null;
 
+// =====================================================================
+// ROTAS DE TICKETS (POST, GET, PUT)
+// =====================================================================
 
 // 6️⃣ Rota: Vendedora cria ticket (Suporte a Cliente Novo/Existente)
 router.post('/', authMiddleware, async (req, res) => {
-    // ... (coloque aqui a lógica completa da sua rota POST /ticket - MUDANÇA: o path agora é '/')
     if (req.user.role !== 'seller') {
         return res.status(403).json({ success: false, message: 'Apenas vendedores podem criar tickets.' });
     }
     
-    // ... (resto da lógica de POST /ticket) ...
     const { title, description, priority, requestedBy, clientId, customerName, address, identifier, phoneNumber } = req.body;
 
     if (requestedBy != req.user.id) {
@@ -103,10 +104,10 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 });
 
+---
 
 // 3️⃣ Rota: LISTAR TODOS OS TICKETS (APENAS ADMIN)
 router.get('/', authMiddleware, roleMiddleware('admin'), async (req, res) => {
-    // ... (coloque aqui a lógica completa da sua rota GET /tickets - MUDANÇA: o path agora é '/')
     try {
         const result = await pool.query(
             `SELECT
@@ -125,7 +126,6 @@ router.get('/', authMiddleware, roleMiddleware('admin'), async (req, res) => {
 
 // 🆕 Rota 3.1: LISTAR TICKETS POR SOLICITANTE (VENDEDOR)
 router.get('/requested/:requested_by_id', authMiddleware, async (req, res) => {
-    // ... (coloque aqui a lógica completa da sua rota GET /tickets/requested/:requested_by_id) ...
     const requestedById = req.params.requested_by_id;
 
     if (req.user.role !== 'admin' && req.user.id != requestedById) {
@@ -152,7 +152,6 @@ router.get('/requested/:requested_by_id', authMiddleware, async (req, res) => {
 
 // 9️⃣ Rota: Técnico lista tickets aprovados
 router.get('/assigned/:tech_id', authMiddleware, async (req, res) => {
-    // ... (coloque aqui a lógica completa da sua rota GET /tickets/assigned/:tech_id) ...
     const techIdParam = req.params.tech_id;
 
     if (req.user.role !== 'admin' && req.user.id != techIdParam) {
@@ -185,7 +184,6 @@ router.get('/assigned/:tech_id', authMiddleware, async (req, res) => {
 
 // 7️⃣ Rota: Administrativo aprova ticket + Atribuição de Técnico + Notificação FCM
 router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, res) => {
-    // ... (coloque aqui a lógica completa da sua rota PUT /tickets/:id/approve) ...
     const ticketId = parseInt(req.params.id, 10); 
     const { assigned_to } = req.body;
     const admin_id = req.user.id;
@@ -247,7 +245,6 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
 
 // 🆕 Rota 8️⃣: Administrativo REJEITA/REPROVA ticket
 router.put('/:id/reject', authMiddleware, roleMiddleware('admin'), async (req, res) => {
-    // ... (coloque aqui a lógica completa da sua rota PUT /tickets/:id/reject) ...
     const ticketId = parseInt(req.params.id, 10); 
     const admin_id = req.user.id;
     
@@ -281,10 +278,12 @@ router.put('/:id/reject', authMiddleware, roleMiddleware('admin'), async (req, r
     }
 });
 
+---
+
+## 🛠️ Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (Corrigida para 42P08)
 
 // 🆕 Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (USADO PELO TÉCNICO) - COM CORREÇÃO 42P08
 router.put('/:id/tech-status', authMiddleware, async (req, res) => {
-    // ** ESTA É A ROTA COM A CORREÇÃO CRÍTICA DO 42P08 **
     const ticketIdParam = req.params.id;
     const { new_status } = req.body; 
 
@@ -313,7 +312,7 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
     }
 
     try {
-        // 3. Busca e Checagem (CORREÇÃO CRÍTICA: t.id = $1::int para resolver o 42P08)
+        // 3. Busca e Checagem 
         const checkResult = await pool.query(
             `SELECT
                 t.title,
@@ -333,9 +332,10 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
         const { title: ticketTitle, seller_id: sellerId, tech_name: techName } = checkResult.rows[0];
 
         // 4. Atualiza o status DE TRABALHO do técnico (tech_status)
+        // CORREÇÃO CRÍTICA (42P08): Adicionado ::VARCHAR(50) ao $1 para resolver a inconsistência de tipos.
         const result = await pool.query(
             `UPDATE tickets
-             SET tech_status = $1,
+             SET tech_status = $1::VARCHAR(50), 
                  last_updated_by = $3,
                  updated_at = now(),
                  completed_at = CASE WHEN $1 = 'COMPLETED' THEN now() ELSE completed_at END
