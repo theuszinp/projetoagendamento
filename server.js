@@ -38,7 +38,7 @@ function authMiddleware(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded; // { id, role }
+        req.user = decoded; // { id, role } -> req.user.id é um number se for integer no JWT payload
         next();
     } catch (err) {
         return res.status(403).json({ success: false, message: 'Token inválido ou expirado.' });
@@ -124,7 +124,8 @@ app.post('/users', async (req, res) => {
 
 // 🆕 ROTA ADICIONADA: ATUALIZAÇÃO DE SENHA (com bcrypt)
 app.put('/users/:id/password', authMiddleware, async (req, res) => {
-    const userId = req.params.id;
+    // 💡 CORREÇÃO 1: Garante que o ID da URL é um número
+    const userId = parseInt(req.params.id, 10);
     const { old_senha, new_senha } = req.body;
 
     // 🔒 Checagem de segurança: O usuário logado só pode mudar a própria senha
@@ -134,6 +135,11 @@ app.put('/users/:id/password', authMiddleware, async (req, res) => {
 
     if (!new_senha) {
         return res.status(400).json({ success: false, message: 'Nova senha é obrigatória.' });
+    }
+    
+    // Checagem de ID da URL é inválido
+    if (isNaN(userId)) {
+         return res.status(400).json({ success: false, message: 'ID de usuário inválido.' });
     }
 
     try {
@@ -434,10 +440,14 @@ app.get('/tickets/assigned/:tech_id', authMiddleware, async (req, res) => {
 
 // 7️⃣ Rota: Administrativo aprova ticket + Atribuição de Técnico + Notificação FCM
 app.put('/tickets/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, res) => {
-    const ticketId = req.params.id;
+    const ticketId = parseInt(req.params.id, 10); // 💡 CORREÇÃO 2: Garante que o ID da URL é um número
     const { assigned_to } = req.body;
     // O admin_id é pego diretamente do token seguro
     const admin_id = req.user.id;
+    
+    if (isNaN(ticketId)) {
+        return res.status(400).json({ success: false, error: 'ID de ticket inválido.' });
+    }
 
     const client = await pool.connect();
 
@@ -496,9 +506,13 @@ app.put('/tickets/:id/approve', authMiddleware, roleMiddleware('admin'), async (
 
 // 🆕 Rota 8️⃣: Administrativo REJEITA/REPROVA ticket
 app.put('/tickets/:id/reject', authMiddleware, roleMiddleware('admin'), async (req, res) => {
-    const ticketId = req.params.id;
+    const ticketId = parseInt(req.params.id, 10); // 💡 CORREÇÃO 3: Garante que o ID da URL é um número
     // O admin_id é pego diretamente do token seguro
     const admin_id = req.user.id;
+    
+    if (isNaN(ticketId)) {
+        return res.status(400).json({ success: false, error: 'ID de ticket inválido.' });
+    }
 
     try {
         // 💡 MUDANÇA: tech_status é explicitamente definido como NULL na rejeição.
@@ -534,18 +548,21 @@ app.put('/tickets/:id/tech-status', authMiddleware, async (req, res) => {
     const ticketIdParam = req.params.id;
     const { new_status } = req.body; // Renomeei no código para new_status para consistência
 
-    // O user_id é pego diretamente do token seguro
-    const user_id = req.user.id;
+    // O user_id é pego diretamente do token seguro (É um número - mas o pool.query aceita number ou string)
+    const userId = req.user.id; // Mantido como número se veio do token como número
 
     // 1. Validação
     if (!new_status) {
         return res.status(400).json({ success: false, error: 'O campo new_status é obrigatório.' });
     }
 
-    const ticketId = parseInt(ticketIdParam, 10);
-    const userId = parseInt(user_id, 10);
+    // 💡 CORREÇÃO CRÍTICA DO ERRO 500: Garante que ticketId é um número.
+    const ticketId = parseInt(ticketIdParam, 10); 
+    
+    // Converte userId para número caso o JWT o trate como string (segurança extra)
+    const numericUserId = parseInt(userId, 10);
 
-    if (isNaN(ticketId) || isNaN(userId)) {
+    if (isNaN(ticketId) || isNaN(numericUserId)) {
         return res.status(400).json({ success: false, error: 'O ID do ticket ou do usuário não é um número válido.' });
     }
 
@@ -570,7 +587,7 @@ app.put('/tickets/:id/tech-status', authMiddleware, async (req, res) => {
              FROM tickets t
              JOIN users tech ON tech.id = t.assigned_to
              WHERE t.id = $1 AND t.assigned_to = $2 AND tech.role = 'tech' AND t.status = 'APPROVED'`,
-            [ticketId, userId]
+            [ticketId, numericUserId] // USANDO OS NUMBERS CONVERTIDOS AQUI
         );
 
         if (checkResult.rows.length === 0) {
@@ -587,7 +604,7 @@ app.put('/tickets/:id/tech-status', authMiddleware, async (req, res) => {
                  updated_at = now(),
                  completed_at = CASE WHEN $1 = 'COMPLETED' THEN now() ELSE completed_at END
              WHERE id = $2 RETURNING *`,
-            [new_status, ticketId, userId]
+            [new_status, ticketId, numericUserId] // USANDO OS NUMBERS CONVERTIDOS AQUI
         );
 
         const ticket = result.rows[0];
@@ -606,6 +623,7 @@ app.put('/tickets/:id/tech-status', authMiddleware, async (req, res) => {
 
     } catch (err) {
         console.error('Erro em PUT /tickets/:id/tech-status:', err);
+        // O erro '42P08' de tipo inconsistente é capturado aqui
         res.status(500).json({ success: false, error: 'Erro ao atualizar status do ticket.', details: err.message });
     }
 });
@@ -629,14 +647,14 @@ app.get('/', (req, res) => {
     try {
         // 💡 MUDANÇA: É CRÍTICO que sua tabela 'tickets' tenha a coluna tech_status
         await pool.query(`
-            DO $$ 
-            BEGIN
-                -- Adiciona a coluna tech_status se ela ainda não existir
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tickets' AND column_name='tech_status') THEN
-                    ALTER TABLE tickets ADD COLUMN tech_status VARCHAR(50) DEFAULT NULL;
-                END IF;
-            END 
-            $$;
+             DO $$ 
+             BEGIN
+                 -- Adiciona a coluna tech_status se ela ainda não existir
+                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tickets' AND column_name='tech_status') THEN
+                     ALTER TABLE tickets ADD COLUMN tech_status VARCHAR(50) DEFAULT NULL;
+                 END IF;
+             END 
+             $$;
         `);
         // Adicionamos índices para as colunas mais usadas em WHERE/JOIN
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
