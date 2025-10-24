@@ -30,29 +30,29 @@ app.use(morgan('combined'));
 
 // 5. JWT Middleware (Do Código 1)
 function authMiddleware(req, res, next) {
-  const header = req.headers['authorization'];
-  if (!header) return res.status(401).json({ success: false, message: 'Token ausente.' });
+    const header = req.headers['authorization'];
+    if (!header) return res.status(401).json({ success: false, message: 'Token ausente.' });
 
-  const token = header.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, message: 'Formato do Token inválido.' });
+    const token = header.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: 'Formato do Token inválido.' });
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { id, role }
-    next();
-  } catch (err) {
-    return res.status(403).json({ success: false, message: 'Token inválido ou expirado.' });
-  }
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // { id, role }
+        next();
+    } catch (err) {
+        return res.status(403).json({ success: false, message: 'Token inválido ou expirado.' });
+    }
 }
 
 // 6. Middleware de Autorização por Role
 function roleMiddleware(requiredRole) {
-  return (req, res, next) => {
-    if (req.user.role !== requiredRole) {
-      return res.status(403).json({ success: false, message: `Acesso negado. Requer role: ${requiredRole}` });
-    }
-    next();
-  };
+    return (req, res, next) => {
+        if (req.user.role !== requiredRole) {
+            return res.status(403).json({ success: false, message: `Acesso negado. Requer role: ${requiredRole}` });
+        }
+        next();
+    };
 }
 
 // =====================================================================
@@ -61,61 +61,61 @@ function roleMiddleware(requiredRole) {
 
 // 🧩 LOGIN (com bcrypt + JWT) - Priorizado do Código 1
 app.post('/login', async (req, res) => {
-  try {
-    const { email, senha } = req.body;
-    if (!email || !senha)
-      return res.status(400).json({ success: false, message: 'Email e senha são obrigatórios.' });
+    try {
+        const { email, senha } = req.body;
+        if (!email || !senha)
+            return res.status(400).json({ success: false, message: 'Email e senha são obrigatórios.' });
 
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    const user = result.rows[0];
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        const user = result.rows[0];
 
-    if (!user) return res.status(401).json({ success: false, message: 'Credenciais inválidas.' });
+        if (!user) return res.status(401).json({ success: false, message: 'Credenciais inválidas.' });
 
-    // Usa Bcrypt para comparação segura (Do Código 1)
-    const isMatch = await bcrypt.compare(senha, user.password_hash);
-    if (!isMatch) return res.status(401).json({ success: false, message: 'Credenciais inválidas.' });
+        // Usa Bcrypt para comparação segura (Do Código 1)
+        const isMatch = await bcrypt.compare(senha, user.password_hash);
+        if (!isMatch) return res.status(401).json({ success: false, message: 'Credenciais inválidas.' });
 
-    // Gera o JWT (Do Código 1)
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: '8h',
-    });
+        // Gera o JWT (Do Código 1)
+        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+            expiresIn: '8h',
+        });
 
-    res.json({
-      success: true,
-      user: { id: user.id, name: user.name, role: user.role },
-      token,
-    });
-  } catch (err) {
-    console.error('Erro no login:', err);
-    res.status(500).json({ success: false, message: 'Erro interno no login.' });
-  }
+        res.json({
+            success: true,
+            user: { id: user.id, name: user.name, role: user.role },
+            token,
+        });
+    } catch (err) {
+        console.error('Erro no login:', err);
+        res.status(500).json({ success: false, message: 'Erro interno no login.' });
+    }
 });
 
 // 🧾 ROTA DE CRIAÇÃO DE USUÁRIOS (com bcrypt) - Priorizado do Código 1
 // Em um cenário real, esta rota também estaria protegida por um admin, mas aqui a mantemos pública para cadastro inicial.
 app.post('/users', async (req, res) => {
-  try {
-    const { name, email, senha, role } = req.body;
-    if (!name || !email || !senha || !role)
-      return res.status(400).json({ success: false, message: 'Campos obrigatórios ausentes.' });
+    try {
+        const { name, email, senha, role } = req.body;
+        if (!name || !email || !senha || !role)
+            return res.status(400).json({ success: false, message: 'Campos obrigatórios ausentes.' });
 
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0)
-      return res.status(400).json({ success: false, message: 'Email já cadastrado.' });
+        const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existing.rows.length > 0)
+            return res.status(400).json({ success: false, message: 'Email já cadastrado.' });
 
-    const password_hash = await bcrypt.hash(senha, 10);
-    await pool.query('INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)', [
-      name,
-      email,
-      password_hash,
-      role,
-    ]);
+        const password_hash = await bcrypt.hash(senha, 10);
+        await pool.query('INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)', [
+            name,
+            email,
+            password_hash,
+            role,
+        ]);
 
-    res.status(201).json({ success: true, message: 'Usuário criado com sucesso.' });
-  } catch (err) {
-    console.error('Erro ao criar usuário:', err);
-    res.status(500).json({ success: false, message: 'Erro ao criar usuário.' });
-  }
+        res.status(201).json({ success: true, message: 'Usuário criado com sucesso.' });
+    } catch (err) {
+        console.error('Erro ao criar usuário:', err);
+        res.status(500).json({ success: false, message: 'Erro ao criar usuário.' });
+    }
 });
 
 // =====================================================================
@@ -131,7 +131,7 @@ app.put('/users/:id/password', authMiddleware, async (req, res) => {
     if (req.user.id != userId && req.user.role !== 'admin') {
         return res.status(403).json({ success: false, message: 'Acesso negado. Você só pode mudar sua própria senha.' });
     }
-    
+
     if (!new_senha) {
         return res.status(400).json({ success: false, message: 'Nova senha é obrigatória.' });
     }
@@ -141,14 +141,14 @@ app.put('/users/:id/password', authMiddleware, async (req, res) => {
         const user = result.rows[0];
 
         if (!user) return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
-        
+
         // 1. Opcional: Verifica a senha antiga (Se old_senha for fornecida)
         if (old_senha) {
-             const isMatch = await bcrypt.compare(old_senha, user.password_hash);
-             if (!isMatch) return res.status(401).json({ success: false, message: 'Senha antiga incorreta.' });
+            const isMatch = await bcrypt.compare(old_senha, user.password_hash);
+            if (!isMatch) return res.status(401).json({ success: false, message: 'Senha antiga incorreta.' });
         } else if (req.user.role !== 'admin') {
-             // Requer a senha antiga se não for um admin fazendo o reset
-             return res.status(400).json({ success: false, message: 'Senha antiga é obrigatória para não-administradores.' });
+            // Requer a senha antiga se não for um admin fazendo o reset
+            return res.status(400).json({ success: false, message: 'Senha antiga é obrigatória para não-administradores.' });
         }
 
 
@@ -210,7 +210,7 @@ app.get('/clients/search', authMiddleware, async (req, res) => {
     if (req.user.role !== 'admin' && req.user.role !== 'seller') {
         return res.status(403).json({ success: false, message: 'Acesso negado.' });
     }
-    
+
     const { identifier } = req.query;
 
     if (!identifier) {
@@ -219,7 +219,7 @@ app.get('/clients/search', authMiddleware, async (req, res) => {
 
     try {
         const clientResult = await pool.query(
-            'SELECT id, name, address, identifier, phone_number FROM customers WHERE identifier = $1', 
+            'SELECT id, name, address, identifier, phone_number FROM customers WHERE identifier = $1',
             [identifier]
         );
         const client = clientResult.rows[0];
@@ -233,7 +233,7 @@ app.get('/clients/search', authMiddleware, async (req, res) => {
             id: client.id,
             name: client.name,
             address: client.address,
-            phoneNumber: client.phone_number 
+            phoneNumber: client.phone_number
         });
 
     } catch (err) {
@@ -255,7 +255,7 @@ app.post('/ticket', authMiddleware, async (req, res) => {
     }
 
     const { title, description, priority, requestedBy, clientId, customerName, address, identifier, phoneNumber } = req.body;
-    
+
     // O ID do solicitante deve ser o mesmo do usuário logado (segurança)
     if (requestedBy != req.user.id) {
         return res.status(403).json({ success: false, message: 'Tentativa de criar ticket para outro usuário.' });
@@ -265,11 +265,11 @@ app.post('/ticket', authMiddleware, async (req, res) => {
     if (!title || !description || !priority || !requestedBy || !customerName) {
         return res.status(400).json({ success: false, error: 'Campos essenciais (título, descrição, prioridade, solicitante, nome) são obrigatórios.' });
     }
-    
+
     if (!clientId && (!address || !phoneNumber || !identifier)) {
         return res.status(400).json({ success: false, error: 'Para novo cliente, endereço, telefone e CPF/CNPJ são obrigatórios.' });
     }
-    
+
     if (clientId && (!address || !phoneNumber)) {
         return res.status(400).json({ success: false, error: 'O endereço e o telefone do cliente são obrigatórios, mesmo para clientes existentes.' });
     }
@@ -314,13 +314,13 @@ app.post('/ticket', authMiddleware, async (req, res) => {
         }
 
         // Insere o novo ticket com status PENDING
+        // 💡 MUDANÇA: Adicionado tech_status = NULL
         const sqlQuery = `INSERT INTO tickets
-             (title, description, priority, customer_id, customer_name, customer_address, requested_by, assigned_to, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, 'PENDING') RETURNING *`;
+             (title, description, priority, customer_id, customer_name, customer_address, requested_by, assigned_to, status, tech_status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, 'PENDING', NULL) RETURNING *`;
 
         // 💡 CORREÇÃO APLICADA: Limpeza da string da query para remover caracteres invisíveis (\u00A0, etc.)
-        // A expressão remove caracteres não-ASCII (além de \n, \r, \t) e os substitui por um espaço, depois normaliza múltiplos espaços.
-        const cleanedQuery = sqlQuery.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' '); 
+        const cleanedQuery = sqlQuery.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ');
 
         const result = await clientDB.query(
             cleanedQuery, // Usando a query limpa
@@ -341,8 +341,7 @@ app.post('/ticket', authMiddleware, async (req, res) => {
     } catch (err) {
         await clientDB.query('ROLLBACK');
         console.error('Erro em POST /ticket (Transação):', err);
-        // O erro 42601 (syntax error) que você encontrou deve sumir com a correção acima.
-        if (err.code === '23505') { 
+        if (err.code === '23505') {
             return res.status(409).json({ success: false, error: `O identificador (CPF/CNPJ) já está cadastrado em nossa base.` });
         }
         res.status(500).json({ success: false, error: 'Erro interno do servidor ao criar ticket. Tente novamente.', details: err.message });
@@ -391,6 +390,7 @@ app.get('/tickets/requested/:requested_by_id', authMiddleware, async (req, res) 
              ORDER BY t.created_at DESC`,
             [requestedById]
         );
+        // O campo t.tech_status JÁ É RETORNADO com o t.*, o que é o comportamento esperado.
         res.json({ success: true, tickets: result.rows });
     } catch (err) {
         console.error('Erro em GET /tickets/requested/:requested_by_id:', err);
@@ -398,17 +398,18 @@ app.get('/tickets/requested/:requested_by_id', authMiddleware, async (req, res) 
     }
 });
 
-// 9️⃣ Rota: Técnico lista tickets aprovados (Somente status = 'APPROVED' e 'IN_PROGRESS')
+// 9️⃣ Rota: Técnico lista tickets aprovados (Somente status = 'APPROVED' ou tech_status = 'IN_PROGRESS'/'COMPLETED')
+// 💡 MUDANÇA: A condição WHERE foi ajustada para usar assigned_to e incluir todos os status de trabalho relevantes.
 app.get('/tickets/assigned/:tech_id', authMiddleware, async (req, res) => {
     const techIdParam = req.params.tech_id;
-    
+
     // Acesso seguro: O técnico só pode ver os tickets atribuídos a ele mesmo
     if (req.user.role !== 'admin' && req.user.id != techIdParam) {
         return res.status(403).json({ success: false, message: 'Acesso negado. Você só pode ver tickets atribuídos a você.' });
     }
 
     const techId = parseInt(techIdParam, 10);
-    
+
     if (isNaN(techId)) {
         return res.status(400).json({ success: false, error: 'O ID do técnico fornecido não é um número válido.' });
     }
@@ -420,7 +421,7 @@ app.get('/tickets/assigned/:tech_id', authMiddleware, async (req, res) => {
                 u.name AS approved_by_admin_name
              FROM tickets t
              LEFT JOIN users u ON t.approved_by = u.id
-             WHERE t.status IN ('APPROVED', 'IN_PROGRESS') AND t.assigned_to = $1
+             WHERE t.assigned_to = $1 AND (t.status = 'APPROVED' OR t.tech_status IN ('IN_PROGRESS', 'COMPLETED'))
              ORDER BY t.created_at DESC`,
             [techId]
         );
@@ -436,13 +437,13 @@ app.put('/tickets/:id/approve', authMiddleware, roleMiddleware('admin'), async (
     const ticketId = req.params.id;
     const { assigned_to } = req.body;
     // O admin_id é pego diretamente do token seguro
-    const admin_id = req.user.id; 
+    const admin_id = req.user.id;
 
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
-        
+
         if (!assigned_to) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, error: 'O ID do técnico para atribuição é obrigatório para aprovar o ticket.' });
@@ -461,10 +462,11 @@ app.put('/tickets/:id/approve', authMiddleware, roleMiddleware('admin'), async (
             });
         }
 
-        // Atualiza o ticket: define status como 'APPROVED' e atribui o técnico
+        // Atualiza o ticket: define status como 'APPROVED', atribui o técnico, e reseta tech_status para NULL (caso tenha sido rejeitado antes)
+        // 💡 MUDANÇA: tech_status é explicitamente definido como NULL na aprovação.
         const update = await client.query(
             `UPDATE tickets
-             SET status = 'APPROVED', approved_by = $1, approved_at = now(), assigned_to = $2
+             SET status = 'APPROVED', approved_by = $1, approved_at = now(), assigned_to = $2, tech_status = NULL
              WHERE id = $3 RETURNING *`,
             [admin_id, assigned_to, ticketId]
         );
@@ -496,12 +498,13 @@ app.put('/tickets/:id/approve', authMiddleware, roleMiddleware('admin'), async (
 app.put('/tickets/:id/reject', authMiddleware, roleMiddleware('admin'), async (req, res) => {
     const ticketId = req.params.id;
     // O admin_id é pego diretamente do token seguro
-    const admin_id = req.user.id; 
+    const admin_id = req.user.id;
 
     try {
+        // 💡 MUDANÇA: tech_status é explicitamente definido como NULL na rejeição.
         const result = await pool.query(
             `UPDATE tickets
-             SET status = 'REJECTED', approved_by = $1, approved_at = now(), assigned_to = NULL
+             SET status = 'REJECTED', approved_by = $1, approved_at = now(), assigned_to = NULL, tech_status = NULL
              WHERE id = $2 RETURNING *`,
             [admin_id, ticketId]
         );
@@ -526,60 +529,61 @@ app.put('/tickets/:id/reject', authMiddleware, roleMiddleware('admin'), async (r
 
 
 // 🆕 Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (USADO PELO TÉCNICO)
-app.put('/tickets/:id/status', authMiddleware, async (req, res) => {
+// 💡 MUDANÇA PRINCIPAL: O campo 'status' NÃO é mais atualizado, apenas o campo 'tech_status'.
+app.put('/tickets/:id/tech-status', authMiddleware, async (req, res) => {
     const ticketIdParam = req.params.id;
-    const { new_status } = req.body;
+    const { new_status } = req.body; // Renomeei no código para new_status para consistência
 
     // O user_id é pego diretamente do token seguro
     const user_id = req.user.id;
 
-    // 1. Validação do Código 2
+    // 1. Validação
     if (!new_status) {
         return res.status(400).json({ success: false, error: 'O campo new_status é obrigatório.' });
     }
-    
+
     const ticketId = parseInt(ticketIdParam, 10);
-    const userId = parseInt(user_id, 10); 
+    const userId = parseInt(user_id, 10);
 
     if (isNaN(ticketId) || isNaN(userId)) {
         return res.status(400).json({ success: false, error: 'O ID do ticket ou do usuário não é um número válido.' });
     }
-    
+
     const validStatus = ['IN_PROGRESS', 'COMPLETED'];
     if (!validStatus.includes(new_status)) {
         return res.status(400).json({ success: false, error: `O status fornecido "${new_status}" é inválido. Status permitidos: ${validStatus.join(', ')}.` });
     }
-    
+
     // 2. Checagem de Autorização do Técnico
     if (req.user.role !== 'tech') {
-        return res.status(403).json({ success: false, message: 'Apenas técnicos podem atualizar o status do ticket.' });
+        return res.status(403).json({ success: false, message: 'Apenas técnicos podem atualizar o status de trabalho do ticket.' });
     }
 
     try {
-        // 3. Busca e Checagem (garante que só pode atualizar se estiver atribuído a ele)
+        // 3. Busca e Checagem (garante que só pode atualizar se estiver atribuído a ele E o status principal não for REJECTED/PENDING)
         const checkResult = await pool.query(
-            `SELECT 
-                t.title, 
-                t.requested_by AS seller_id, 
+            `SELECT
+                t.title,
+                t.requested_by AS seller_id,
                 t.status,
                 tech.name AS tech_name
              FROM tickets t
              JOIN users tech ON tech.id = t.assigned_to
-             WHERE t.id = $1 AND t.assigned_to = $2 AND tech.role = 'tech'`,
+             WHERE t.id = $1 AND t.assigned_to = $2 AND tech.role = 'tech' AND t.status = 'APPROVED'`,
             [ticketId, userId]
         );
 
         if (checkResult.rows.length === 0) {
-            return res.status(403).json({ success: false, error: 'Ticket não encontrado ou não está atribuído a você.' });
+            return res.status(403).json({ success: false, error: 'Ticket não encontrado, não atribuído a você, ou não foi aprovado pelo Admin.' });
         }
-        
+
         const { title: ticketTitle, seller_id: sellerId, tech_name: techName } = checkResult.rows[0];
 
-        // 4. Atualiza o status
+        // 4. Atualiza o status DE TRABALHO do técnico (tech_status)
         const result = await pool.query(
             `UPDATE tickets
-             SET status = $1, 
-                 last_updated_by = $3, 
+             SET tech_status = $1,
+                 last_updated_by = $3,
                  updated_at = now(),
                  completed_at = CASE WHEN $1 = 'COMPLETED' THEN now() ELSE completed_at END
              WHERE id = $2 RETURNING *`,
@@ -596,12 +600,12 @@ app.put('/tickets/:id/status', authMiddleware, async (req, res) => {
         // 6. Retorno de sucesso
         res.status(200).json({
             success: true,
-            message: `Status do Ticket ID ${ticketId} atualizado para ${new_status} por ${techName}.`,
+            message: `Status de trabalho do Ticket ID ${ticketId} atualizado para ${new_status} por ${techName}.`,
             ticket: ticket
         });
 
     } catch (err) {
-        console.error('Erro em PUT /tickets/:id/status:', err);
+        console.error('Erro em PUT /tickets/:id/tech-status:', err);
         res.status(500).json({ success: false, error: 'Erro ao atualizar status do ticket.', details: err.message });
     }
 });
@@ -611,27 +615,41 @@ app.put('/tickets/:id/status', authMiddleware, async (req, res) => {
 // 🚀 ROTA TESTE PÚBLICA (Do Código 1 - Health Check)
 // =====================================================================
 app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'API TrackerCars - Online 🚗',
-    version: '2.0-secure',
-  });
+    res.json({
+        success: true,
+        message: 'API TrackerCars - Online 🚗',
+        version: '2.0-secure-tech_status', // Versão atualizada
+    });
 });
 
 // =====================================================================
 // 🧱 CRIAÇÃO DE ÍNDICES AUTOMÁTICA (executa uma vez no start) - Do Código 1
 // =====================================================================
 (async () => {
-  try {
-    // Adicionamos índices para as colunas mais usadas em WHERE/JOIN
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_requested_by ON tickets(requested_by);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_customers_identifier ON customers(identifier);`);
-    console.log('🔍 Índices do banco verificados/criados.');
-  } catch (err) {
-    console.error('Erro ao criar índices:', err);
-  }
+    try {
+        // 💡 MUDANÇA: É CRÍTICO que sua tabela 'tickets' tenha a coluna tech_status
+        await pool.query(`
+            DO $$ 
+            BEGIN
+                -- Adiciona a coluna tech_status se ela ainda não existir
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tickets' AND column_name='tech_status') THEN
+                    ALTER TABLE tickets ADD COLUMN tech_status VARCHAR(50) DEFAULT NULL;
+                END IF;
+            END 
+            $$;
+        `);
+        // Adicionamos índices para as colunas mais usadas em WHERE/JOIN
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_requested_by ON tickets(requested_by);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_customers_identifier ON customers(identifier);`);
+        // Adiciona um índice para a nova coluna tech_status para otimizar buscas
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_tech_status ON tickets(tech_status);`);
+
+        console.log('🔍 Índices do banco verificados/criados.');
+    } catch (err) {
+        console.error('Erro ao criar índices/colunas:', err);
+    }
 })();
 
 
@@ -641,26 +659,26 @@ app.get('/', (req, res) => {
 
 // 🚨 TRATAMENTO DE ROTA NÃO ENCONTRADA (404) - DEVE SER O PENÚLTIMO
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Rota não encontrada.', path: req.originalUrl });
+    res.status(404).json({ success: false, message: 'Rota não encontrada.', path: req.originalUrl });
 });
 
 // 🚨 MIDDLEWARE DE TRATAMENTO DE ERRO CENTRALIZADO (500) - DEVE SER O ÚLTIMO
 app.use((err, req, res, next) => {
-  console.error('Erro interno:', err.stack);
-  const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({ 
-    success: false, 
-    message: 'Erro interno no servidor.',
-    details: err.message,
-    path: req.originalUrl
-  });
+    console.error('Erro interno:', err.stack);
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({
+        success: false,
+        message: 'Erro interno no servidor.',
+        details: err.message,
+        path: req.originalUrl
+    });
 });
 
 // =====================================================================
 // 🧩 INICIAR SERVIDOR
 // =====================================================================
 app.listen(PORT, () => {
-  console.log(`✅ Servidor rodando na porta ${PORT}`);
-  const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-  console.log(`Base URL: ${baseUrl}`);
+    console.log(`✅ Servidor rodando na porta ${PORT}`);
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    console.log(`Base URL: ${baseUrl}`);
 });
