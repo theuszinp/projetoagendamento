@@ -3,11 +3,9 @@
 import 'package:flutter/material.dart';
 
 // Imports solicitados
-import '../core/admin_service.dart'; // Importa AdminService e ApiException
-import '../core/models.dart'; // Importa User e Ticket
-
-// 🎯 IMPORT CORRIGIDO: O caminho é '../core/ticket_item_card.dart'
-import '../core/ticket_item_card.dart'; // Importa o Card Fatorado
+import 'package:rastreador_app_flutter/core/admin_service.dart';
+import 'package:rastreador_app_flutter/core/models.dart';
+import 'package:rastreador_app_flutter/core/ticket_item_card.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final String authToken;
