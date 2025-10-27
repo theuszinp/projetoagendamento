@@ -2,53 +2,64 @@
 // 🌐 CONFIGURAÇÃO GERAL DO SERVIDOR (Refatorado para Rotas Modulares)
 // =====================================================================
 
-// 1. CARREGAR VARIÁVEIS DE AMBIENTE (DEVE SER O PRIMEIRO!)
+// 1️⃣ CARREGAR VARIÁVEIS DE AMBIENTE (DEVE SER O PRIMEIRO!)
 require('dotenv').config();
 
-// 2. IMPORTAR LIBS
+// 2️⃣ IMPORTAR LIBS
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const morgan = require('morgan');
 const jwt = require('jsonwebtoken');
-const pool = require('./db'); // conexão com PostgreSQL
-// O restante das libs (bcrypt, path) será importado apenas nos arquivos de rota onde é necessário
+const pool = require('./db'); // Conexão com PostgreSQL
+const fs = require('fs'); // Usado para checar firebase.js
 
-// Checa se o arquivo firebase.js existe antes de tentar importar
-const adminFirebase = require.resolve('./firebase') ? require('./firebase') : null;
+// ✅ Checa se o arquivo firebase.js existe antes de importar
+let adminFirebase = null;
+if (fs.existsSync('./firebase.js')) {
+    adminFirebase = require('./firebase');
+}
 
-// 3. CONFIGURAR EXPRESS
+// 3️⃣ CONFIGURAR EXPRESS
 const app = express();
-const PORT = process.env.PORT || 10000; 
+const PORT = process.env.PORT || 10000;
 
-// 4. MIDDLEWARES GLOBAIS
+// 4️⃣ MIDDLEWARES GLOBAIS
 app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 app.use(morgan('combined'));
 
-// 5. JWT Middleware (Middleware de Aplicação, fica no server.js)
+// =====================================================================
+// 🔐 MIDDLEWARES DE AUTENTICAÇÃO E AUTORIZAÇÃO
+// =====================================================================
+
+// JWT Auth Middleware
 function authMiddleware(req, res, next) {
     const header = req.headers['authorization'];
-    if (!header) return res.status(401).json({ success: false, message: 'Token ausente.' });
+    if (!header) {
+        return res.status(401).json({ success: false, message: 'Token ausente.' });
+    }
 
-    const token = header.split(' ')[1];
-    if (!token) return res.status(401).json({ success: false, message: 'Formato do Token inválido.' });
+    const parts = header.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+        return res.status(401).json({ success: false, message: 'Formato do token inválido.' });
+    }
 
+    const token = parts[1];
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded; // { id, role } -> req.user.id é um number se for integer no JWT payload
+        req.user = decoded; // Ex: { id, role }
         next();
     } catch (err) {
         return res.status(403).json({ success: false, message: 'Token inválido ou expirado.' });
     }
 }
-// Exporta para que os módulos de rota possam usá-lo
 exports.authMiddleware = authMiddleware;
 
-// 6. Middleware de Autorização por Role (Exporta para ser usado nas rotas)
+// Role Middleware
 function roleMiddleware(requiredRole) {
     return (req, res, next) => {
-        if (req.user.role !== requiredRole) {
+        if (!req.user || req.user.role !== requiredRole) {
             return res.status(403).json({ success: false, message: `Acesso negado. Requer role: ${requiredRole}` });
         }
         next();
@@ -56,75 +67,77 @@ function roleMiddleware(requiredRole) {
 }
 exports.roleMiddleware = roleMiddleware;
 
-
 // =====================================================================
-// 7. CARREGAMENTO DAS ROTAS MODULARES (NOVO!)
+// 🧩 ROTAS MODULARES
 // =====================================================================
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const clientRoutes = require('./routes/clients');
 const ticketRoutes = require('./routes/tickets');
 
-// Monta os módulos de rota
-app.use('/', authRoutes);      // /login, /users (criação)
-app.use('/users', userRoutes); // Rotas de usuários protegidas
-app.use('/clients', clientRoutes); // Rotas de clientes protegidas
-app.use('/tickets', ticketRoutes); // Rotas de tickets protegidas
+app.use('/', authRoutes);          // /login, /users (criação)
+app.use('/users', userRoutes);     // Rotas protegidas de usuários
+app.use('/clients', clientRoutes); // Rotas protegidas de clientes
+app.use('/tickets', ticketRoutes); // Rotas protegidas de tickets
 
-// ROTA TESTE PÚBLICA (Health Check)
+// Health check (rota pública)
 app.get('/', (req, res) => {
     res.json({
         success: true,
         message: 'API TrackerCars - Online 🚗',
-        version: '3.0-refatorada-final', // Versão atualizada
+        version: '3.0-refatorada-final',
     });
 });
 
-
 // =====================================================================
-// 🧱 CRIAÇÃO DE ÍNDICES AUTOMÁTICA (executa uma vez no start)
+// 🧱 CRIAÇÃO DE ÍNDICES AUTOMÁTICA
 // =====================================================================
-// **MANTENHA ESTA SEÇÃO AQUI, POIS ELA PRECISA DO 'pool' E RODA AO INICIAR**
 (async () => {
     try {
         await pool.query(`
-            DO $$ 
+            DO $$
             BEGIN
-                -- Adiciona a coluna tech_status se ela ainda não existir
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tickets' AND column_name='tech_status') THEN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name='tickets' AND column_name='tech_status'
+                ) THEN
                     ALTER TABLE tickets ADD COLUMN tech_status VARCHAR(50) DEFAULT NULL;
                 END IF;
-            END 
+            END
             $$;
         `);
-        // Adicionamos índices para as colunas mais usadas em WHERE/JOIN
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_requested_by ON tickets(requested_by);`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_customers_identifier ON customers(identifier);`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_tech_status ON tickets(tech_status);`);
 
-        console.log('🔍 Índices do banco verificados/criados.');
+        const indexes = [
+            `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+            `CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);`,
+            `CREATE INDEX IF NOT EXISTS idx_tickets_requested_by ON tickets(requested_by);`,
+            `CREATE INDEX IF NOT EXISTS idx_customers_identifier ON customers(identifier);`,
+            `CREATE INDEX IF NOT EXISTS idx_tickets_tech_status ON tickets(tech_status);`
+        ];
+
+        for (const query of indexes) {
+            await pool.query(query);
+        }
+
+        console.log('🔍 Índices e colunas verificados/criados com sucesso.');
     } catch (err) {
-        console.error('Erro ao criar índices/colunas:', err);
+        console.error('❌ Erro ao criar índices/colunas:', err);
     }
 })();
-
 
 // =====================================================================
 // ⚙️ TRATAMENTO DE ERROS GLOBAIS
 // =====================================================================
 
-// 🚨 TRATAMENTO DE ROTA NÃO ENCONTRADA (404)
+// 404 - Rota não encontrada
 app.use((req, res) => {
     res.status(404).json({ success: false, message: 'Rota não encontrada.', path: req.originalUrl });
 });
 
-// 🚨 MIDDLEWARE DE TRATAMENTO DE ERRO CENTRALIZADO (500)
+// 500 - Erros internos
 app.use((err, req, res, next) => {
     console.error('Erro interno:', err.stack);
-    const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({
+    res.status(err.statusCode || 500).json({
         success: false,
         message: 'Erro interno no servidor.',
         details: err.message,
@@ -133,10 +146,10 @@ app.use((err, req, res, next) => {
 });
 
 // =====================================================================
-// 🧩 INICIAR SERVIDOR
+// 🚀 INICIAR SERVIDOR
 // =====================================================================
 app.listen(PORT, () => {
     console.log(`✅ Servidor rodando na porta ${PORT}`);
     const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-    console.log(`Base URL: ${baseUrl}`);
+    console.log(`🌐 Base URL: ${baseUrl}`);
 });
