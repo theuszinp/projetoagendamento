@@ -1,9 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const fs = require('fs');
+const path = require('path');
 const { authMiddleware, roleMiddleware } = require('../server'); // Importa middlewares
-// Checa se o arquivo firebase.js existe antes de tentar importar
-const adminFirebase = require.resolve('../firebase') ? require('../firebase') : null;
+
+// Tenta carregar firebase apenas se o arquivo existir
+let adminFirebase = null;
+try {
+    const firebasePath = path.join(__dirname, '..', 'firebase.js');
+    if (fs.existsSync(firebasePath)) {
+        adminFirebase = require(firebasePath);
+    }
+} catch (e) {
+    console.warn('Arquivo firebase não carregado:', e.message);
+}
 
 // =====================================================================
 // ROTAS DE TICKETS (POST, GET, PUT)
@@ -15,9 +26,26 @@ router.post('/', authMiddleware, async (req, res) => {
         return res.status(403).json({ success: false, message: 'Apenas vendedores podem criar tickets.' });
     }
     
-    const { title, description, priority, requestedBy, clientId, customerName, address, identifier, phoneNumber } = req.body;
+    const {
+        title,
+        description,
+        priority,
+        requestedBy,
+        clientId,
+        customerName,
+        address,
+        identifier,
+        phoneNumber
+    } = req.body;
 
-    if (requestedBy != req.user.id) {
+    // Normaliza e valida IDs (evita comparação string/number)
+    const numericRequestedBy = Number(requestedBy);
+    if (Number.isNaN(numericRequestedBy)) {
+        return res.status(400).json({ success: false, error: 'O campo requestedBy deve ser um ID numérico válido.' });
+    }
+
+    // Garante que o vendedor só possa criar tickets para si mesmo
+    if (Number(req.user.id) !== numericRequestedBy) {
         return res.status(403).json({ success: false, message: 'Tentativa de criar ticket para outro usuário.' });
     }
 
@@ -57,7 +85,14 @@ router.post('/', authMiddleware, async (req, res) => {
             finalClientId = newClientResult.rows[0].id;
 
         } else {
-            const existingClient = await clientDB.query('SELECT id FROM customers WHERE id = $1', [clientId]);
+            // valida numericidade do clientId
+            const numericClientId = Number(clientId);
+            if (Number.isNaN(numericClientId)) {
+                await clientDB.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'clientId inválido.' });
+            }
+
+            const existingClient = await clientDB.query('SELECT id FROM customers WHERE id = $1', [numericClientId]);
             if (existingClient.rows.length === 0) {
                 await clientDB.query('ROLLBACK');
                 return res.status(404).json({ success: false, error: 'Cliente existente não encontrado com o ID fornecido.' });
@@ -65,19 +100,18 @@ router.post('/', authMiddleware, async (req, res) => {
 
             await clientDB.query(
                 'UPDATE customers SET name = $1, address = $2, phone_number = $3 WHERE id = $4',
-                [customerName, address, phoneNumber, clientId]
+                [customerName, address, phoneNumber, numericClientId]
             );
-            finalClientId = clientId;
+            finalClientId = numericClientId;
         }
 
         const sqlQuery = `INSERT INTO tickets
              (title, description, priority, customer_id, customer_name, customer_address, requested_by, assigned_to, status, tech_status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, 'PENDING', NULL) RETURNING *`;
 
-        const cleanedQuery = sqlQuery.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ');
-
+        // O cleanedQuery anterior era estranho (removendo caracteres não-ascii) — mantemos a query normal
         const result = await clientDB.query(
-            cleanedQuery, 
+            sqlQuery, 
             [
                 title,
                 description,
@@ -85,7 +119,7 @@ router.post('/', authMiddleware, async (req, res) => {
                 finalClientId,
                 customerName,
                 address,
-                requestedBy
+                numericRequestedBy
             ]
         );
 
@@ -104,7 +138,6 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 });
 
----
 
 // 3️⃣ Rota: LISTAR TODOS OS TICKETS (APENAS ADMIN)
 router.get('/', authMiddleware, roleMiddleware('admin'), async (req, res) => {
@@ -126,9 +159,15 @@ router.get('/', authMiddleware, roleMiddleware('admin'), async (req, res) => {
 
 // 🆕 Rota 3.1: LISTAR TICKETS POR SOLICITANTE (VENDEDOR)
 router.get('/requested/:requested_by_id', authMiddleware, async (req, res) => {
-    const requestedById = req.params.requested_by_id;
+    const requestedByIdParam = req.params.requested_by_id;
+    const requestedById = parseInt(requestedByIdParam, 10);
 
-    if (req.user.role !== 'admin' && req.user.id != requestedById) {
+    if (isNaN(requestedById)) {
+        return res.status(400).json({ success: false, error: 'O ID do solicitante deve ser um número válido.' });
+    }
+
+    // Se não for admin, só pode ver os próprios tickets
+    if (req.user.role !== 'admin' && Number(req.user.id) !== requestedById) {
         return res.status(403).json({ success: false, message: 'Acesso negado. Você só pode ver seus próprios tickets.' });
     }
 
@@ -153,15 +192,14 @@ router.get('/requested/:requested_by_id', authMiddleware, async (req, res) => {
 // 9️⃣ Rota: Técnico lista tickets aprovados
 router.get('/assigned/:tech_id', authMiddleware, async (req, res) => {
     const techIdParam = req.params.tech_id;
-
-    if (req.user.role !== 'admin' && req.user.id != techIdParam) {
-        return res.status(403).json({ success: false, message: 'Acesso negado. Você só pode ver tickets atribuídos a você.' });
-    }
-
     const techId = parseInt(techIdParam, 10);
 
     if (isNaN(techId)) {
         return res.status(400).json({ success: false, error: 'O ID do técnico fornecido não é um número válido.' });
+    }
+
+    if (req.user.role !== 'admin' && Number(req.user.id) !== techId) {
+        return res.status(403).json({ success: false, message: 'Acesso negado. Você só pode ver tickets atribuídos a você.' });
     }
 
     try {
@@ -186,10 +224,19 @@ router.get('/assigned/:tech_id', authMiddleware, async (req, res) => {
 router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, res) => {
     const ticketId = parseInt(req.params.id, 10); 
     const { assigned_to } = req.body;
-    const admin_id = req.user.id;
+    const admin_id = Number(req.user.id);
     
     if (isNaN(ticketId)) {
         return res.status(400).json({ success: false, error: 'ID de ticket inválido.' });
+    }
+
+    if (!assigned_to) {
+        return res.status(400).json({ success: false, error: 'O ID do técnico para atribuição é obrigatório para aprovar o ticket.' });
+    }
+
+    const numericAssignedTo = Number(assigned_to);
+    if (Number.isNaN(numericAssignedTo)) {
+        return res.status(400).json({ success: false, error: 'O ID do técnico deve ser numérico.' });
     }
 
     const client = await pool.connect();
@@ -197,20 +244,15 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
     try {
         await client.query('BEGIN');
 
-        if (!assigned_to) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, error: 'O ID do técnico para atribuição é obrigatório para aprovar o ticket.' });
-        }
-
         const techResCheck = await client.query(
-            'SELECT id FROM users WHERE id = $1 AND role = \'tech\'',
-            [assigned_to]
+            'SELECT id FROM users WHERE id = $1 AND role = $2',
+            [numericAssignedTo, 'tech']
         );
         if (techResCheck.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({
                 success: false,
-                error: `Técnico com ID ${assigned_to} não encontrado ou não tem o cargo 'tech'.`,
+                error: `Técnico com ID ${numericAssignedTo} não encontrado ou não tem o cargo 'tech'.`,
             });
         }
 
@@ -218,7 +260,7 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
             `UPDATE tickets
              SET status = 'APPROVED', approved_by = $1, approved_at = now(), assigned_to = $2, tech_status = NULL
              WHERE id = $3 RETURNING *`,
-            [admin_id, assigned_to, ticketId]
+            [admin_id, numericAssignedTo, ticketId]
         );
 
         const ticket = update.rows[0];
@@ -229,7 +271,12 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
         }
 
         let notification_sent = false;
-        // ... (resto da lógica de notificação FCM) ...
+        // Se você tem adminFirebase configurado -> enviar FCM aqui
+        // Exemplo (pseudo):
+        // if (adminFirebase && adminFirebase.messaging) {
+        //     // montar payload e enviar
+        //     notification_sent = true/false conforme resposta
+        // }
 
         await client.query('COMMIT');
         res.json({ success: true, ticket, notification_sent });
@@ -246,7 +293,7 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
 // 🆕 Rota 8️⃣: Administrativo REJEITA/REPROVA ticket
 router.put('/:id/reject', authMiddleware, roleMiddleware('admin'), async (req, res) => {
     const ticketId = parseInt(req.params.id, 10); 
-    const admin_id = req.user.id;
+    const admin_id = Number(req.user.id);
     
     if (isNaN(ticketId)) {
         return res.status(400).json({ success: false, error: 'ID de ticket inválido.' });
@@ -278,16 +325,12 @@ router.put('/:id/reject', authMiddleware, roleMiddleware('admin'), async (req, r
     }
 });
 
----
-
-## 🛠️ Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (Corrigida para 42P08)
-
-// 🆕 Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (USADO PELO TÉCNICO) - COM CORREÇÃO 42P08
+// 🆕 Rota 10: ATUALIZAÇÃO DO STATUS DO TICKET (USADO PELO TÉCNICO)
 router.put('/:id/tech-status', authMiddleware, async (req, res) => {
     const ticketIdParam = req.params.id;
     const { new_status } = req.body; 
 
-    const userId = req.user.id; 
+    const userId = Number(req.user.id); 
 
     // 1. Validação e Coerção
     if (!new_status) {
@@ -295,9 +338,7 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
     }
 
     const ticketId = parseInt(ticketIdParam, 10); 
-    const numericUserId = parseInt(userId, 10);
-
-    if (isNaN(ticketId) || isNaN(numericUserId)) {
+    if (isNaN(ticketId) || isNaN(userId)) {
         return res.status(400).json({ success: false, error: 'O ID do ticket ou do usuário não é um número válido.' });
     }
 
@@ -321,8 +362,8 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
                 tech.name AS tech_name
              FROM tickets t
              JOIN users tech ON tech.id = t.assigned_to
-             WHERE t.id = $1::int AND t.assigned_to = $2 AND tech.role = 'tech' AND t.status = 'APPROVED'`,
-            [ticketId, numericUserId] 
+             WHERE t.id = $1 AND t.assigned_to = $2 AND tech.role = $3 AND t.status = 'APPROVED'`,
+            [ticketId, userId, 'tech'] 
         );
 
         if (checkResult.rows.length === 0) {
@@ -332,7 +373,6 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
         const { title: ticketTitle, seller_id: sellerId, tech_name: techName } = checkResult.rows[0];
 
         // 4. Atualiza o status DE TRABALHO do técnico (tech_status)
-        // CORREÇÃO CRÍTICA (42P08): Adicionado ::VARCHAR(50) ao $1 para resolver a inconsistência de tipos.
         const result = await pool.query(
             `UPDATE tickets
              SET tech_status = $1::VARCHAR(50), 
@@ -340,7 +380,7 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
                  updated_at = now(),
                  completed_at = CASE WHEN $1 = 'COMPLETED' THEN now() ELSE completed_at END
              WHERE id = $2 RETURNING *`,
-            [new_status, ticketId, numericUserId]
+            [new_status, ticketId, userId]
         );
 
         const ticket = result.rows[0];
