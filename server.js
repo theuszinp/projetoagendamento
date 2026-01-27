@@ -10,9 +10,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const morgan = require('morgan');
-const jwt = require('jsonwebtoken');
 const pool = require('./db'); // Conexão com PostgreSQL
 const fs = require('fs'); // Usado para checar firebase.js
+const { authMiddleware, roleMiddleware } = require('./middleware/auth');
 
 // ✅ Checa se o arquivo firebase.js existe antes de importar
 let adminFirebase = null;
@@ -28,44 +28,6 @@ const PORT = process.env.PORT || 10000;
 app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 app.use(morgan('combined'));
-
-// =====================================================================
-// 🔐 MIDDLEWARES DE AUTENTICAÇÃO E AUTORIZAÇÃO
-// =====================================================================
-
-// JWT Auth Middleware
-function authMiddleware(req, res, next) {
-    const header = req.headers['authorization'];
-    if (!header) {
-        return res.status(401).json({ success: false, message: 'Token ausente.' });
-    }
-
-    const parts = header.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-        return res.status(401).json({ success: false, message: 'Formato do token inválido.' });
-    }
-
-    const token = parts[1];
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded; // Ex: { id, role }
-        next();
-    } catch (err) {
-        return res.status(403).json({ success: false, message: 'Token inválido ou expirado.' });
-    }
-}
-exports.authMiddleware = authMiddleware;
-
-// Role Middleware
-function roleMiddleware(requiredRole) {
-    return (req, res, next) => {
-        if (!req.user || req.user.role !== requiredRole) {
-            return res.status(403).json({ success: false, message: `Acesso negado. Requer role: ${requiredRole}` });
-        }
-        next();
-    };
-}
-exports.roleMiddleware = roleMiddleware;
 
 // =====================================================================
 // 🧩 ROTAS MODULARES
