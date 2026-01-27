@@ -3,7 +3,8 @@ const router = express.Router();
 const pool = require('../db');
 const fs = require('fs');
 const path = require('path');
-const { authMiddleware, roleMiddleware } = require('../server'); // Importa middlewares
+const { authMiddleware, roleMiddleware } = require('../middleware/auth'); // Importa middlewares
+const { normalizeIdentifier, isValidIdentifier } = require('../utils/identifier');
 
 // Tenta carregar firebase apenas se o arquivo existir
 let adminFirebase = null;
@@ -61,6 +62,19 @@ router.post('/', authMiddleware, async (req, res) => {
         return res.status(400).json({ success: false, error: 'O endereço e o telefone do cliente são obrigatórios, mesmo para clientes existentes.' });
     }
 
+    const normalizedIdentifier = normalizeIdentifier(identifier);
+    if (!clientId && (!normalizedIdentifier || normalizedIdentifier.length === 0)) {
+        return res.status(400).json({ success: false, error: 'O CPF/CNPJ do cliente é obrigatório e deve conter apenas números.' });
+    }
+
+    if (!clientId && !isValidIdentifier(normalizedIdentifier)) {
+        return res.status(400).json({ success: false, error: 'O CPF/CNPJ informado é inválido.' });
+    }
+
+    if (clientId && identifier && !isValidIdentifier(normalizedIdentifier)) {
+        return res.status(400).json({ success: false, error: 'O CPF/CNPJ informado é inválido.' });
+    }
+
     const clientDB = await pool.connect();
     let finalClientId = clientId;
 
@@ -69,8 +83,10 @@ router.post('/', authMiddleware, async (req, res) => {
 
         if (!clientId) {
             const existingIdResult = await clientDB.query(
-                'SELECT id FROM customers WHERE identifier = $1',
-                [identifier]
+                `SELECT id
+                 FROM customers
+                 WHERE REPLACE(REPLACE(REPLACE(REPLACE(identifier, '.', ''), '-', ''), '/', ''), ' ', '') = $1`,
+                [normalizedIdentifier]
             );
 
             if (existingIdResult.rows.length > 0) {
@@ -80,7 +96,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
             const newClientResult = await clientDB.query(
                 'INSERT INTO customers (name, address, identifier, phone_number) VALUES ($1, $2, $3, $4) RETURNING id',
-                [customerName, address, identifier, phoneNumber]
+                [customerName, address, normalizedIdentifier, phoneNumber]
             );
             finalClientId = newClientResult.rows[0].id;
 
@@ -92,10 +108,24 @@ router.post('/', authMiddleware, async (req, res) => {
                 return res.status(400).json({ success: false, error: 'clientId inválido.' });
             }
 
-            const existingClient = await clientDB.query('SELECT id FROM customers WHERE id = $1', [numericClientId]);
+            const existingClient = await clientDB.query(
+                'SELECT id, identifier FROM customers WHERE id = $1',
+                [numericClientId]
+            );
             if (existingClient.rows.length === 0) {
                 await clientDB.query('ROLLBACK');
                 return res.status(404).json({ success: false, error: 'Cliente existente não encontrado com o ID fornecido.' });
+            }
+
+            if (identifier) {
+                const storedIdentifier = normalizeIdentifier(existingClient.rows[0].identifier || '');
+                if (storedIdentifier && storedIdentifier !== normalizedIdentifier) {
+                    await clientDB.query('ROLLBACK');
+                    return res.status(409).json({
+                        success: false,
+                        error: 'O CPF/CNPJ informado não corresponde ao cliente existente.',
+                    });
+                }
             }
 
             await clientDB.query(

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const bcrypt = require('bcrypt');
-const { authMiddleware, roleMiddleware } = require('../server'); // Importa middlewares
+const { authMiddleware, roleMiddleware } = require('../middleware/auth'); // Importa middlewares
 
 // 🔐 1️⃣ ROTA: ATUALIZAÇÃO DE SENHA (com bcrypt)
 router.put('/:id/password', authMiddleware, async (req, res) => {

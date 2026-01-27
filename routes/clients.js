@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { authMiddleware } = require('../server'); // Importa o middleware de autenticação
+const { authMiddleware } = require('../middleware/auth'); // Importa o middleware de autenticação
+const { normalizeIdentifier, isValidIdentifier } = require('../utils/identifier');
 
 // 🔍 5️⃣ Rota: BUSCA DE CLIENTE (POR IDENTIFIER - CPF/CNPJ)
 router.get('/search', authMiddleware, async (req, res) => {
@@ -19,7 +20,10 @@ router.get('/search', authMiddleware, async (req, res) => {
         }
 
         // ✅ Normaliza CPF/CNPJ (remove pontos, traços, barras, etc.)
-        const cleanIdentifier = identifier.replace(/\D/g, '');
+        const cleanIdentifier = normalizeIdentifier(identifier);
+        if (!isValidIdentifier(cleanIdentifier)) {
+            return res.status(400).json({ success: false, error: 'O CPF/CNPJ informado é inválido.' });
+        }
 
         // ✅ Busca o cliente no banco
         const clientResult = await pool.query(
