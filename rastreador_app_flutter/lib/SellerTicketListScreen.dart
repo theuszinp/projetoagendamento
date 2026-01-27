@@ -76,7 +76,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     });
 
     try {
-      final url = Uri.parse('$API_BASE_URL/tickets/requested/${widget.userId}');
+      final url = Uri.parse('$API_BASE_URL/ticket/requested/${widget.userId}');
       final response = await http.get(
         url,
         headers: {
@@ -96,6 +96,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
         final errorData = json.decode(response.body);
         setState(() {
           _errorMessage = errorData['error'] ??
+              errorData['message'] ??
               'Falha ao carregar tickets. Código: ${response.statusCode}';
           _isLoading = false;
         });
@@ -158,12 +159,16 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
 
     switch (prioridadeApi.toUpperCase()) {
       case 'LOW':
+      case 'BAIXA':
         prioridadeDisplay = 'Baixa';
         break;
       case 'MEDIUM':
+      case 'MÉDIA':
+      case 'MEDIA':
         prioridadeDisplay = 'Média';
         break;
       case 'HIGH':
+      case 'ALTA':
         prioridadeDisplay = 'Alta';
         break;
       default:

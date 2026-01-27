@@ -101,15 +101,16 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final clientData = data['client'] as Map<String, dynamic>? ?? {};
 
         if (mounted) {
           setState(() {
             // O cliente foi encontrado: preenche os campos
-            _clientId = data['id'];
-            _customerNameController.text = data['name'] ?? 'Cliente sem nome';
-            _addressController.text = data['address'] ?? '';
-            // Note: O backend não retorna 'phoneNumber'. Se tivesse, seria:
-            // _phoneNumberController.text = data['phoneNumber'] ?? '';
+            _clientId = clientData['id'];
+            _customerNameController.text =
+                clientData['name'] ?? 'Cliente sem nome';
+            _addressController.text = clientData['address'] ?? '';
+            _phoneNumberController.text = clientData['phoneNumber'] ?? '';
 
             // TRAVA APENAS O CAMPO DE BUSCA (CPF/CNPJ)
             _isIdentifierReadOnly = true;
@@ -196,19 +197,32 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             Colors.red);
         return;
       }
+    } else {
+      if (_addressController.text.trim().isEmpty) {
+        _showSnackBar(
+            '⚠️ O Endereço de Instalação é obrigatório para clientes existentes.',
+            Colors.red);
+        return;
+      }
+      if (_phoneNumberController.text.trim().isEmpty) {
+        _showSnackBar(
+            '⚠️ O Número de Contato do Cliente é obrigatório para clientes existentes.',
+            Colors.red);
+        return;
+      }
     }
 
     // 💡 CORREÇÃO CRÍTICA: Mapeamento da Prioridade para o formato da API (Ex: 'LOW', 'MEDIUM', 'HIGH')
     String apiPriority;
     switch (_selectedPriority) {
       case 'Baixa':
-        apiPriority = 'Baixa';
+        apiPriority = 'LOW';
         break;
       case 'Média':
-        apiPriority = 'Média';
+        apiPriority = 'MEDIUM';
         break;
       case 'Alta':
-        apiPriority = 'Alta';
+        apiPriority = 'HIGH';
         break;
       default:
         _showSnackBar('⚠️ Prioridade inválida.', Colors.red);
@@ -318,15 +332,13 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
     // Define os textos dos labels condicionalmente
     final bool isNewClient = _clientId == null;
-    final String nameLabel = isNewClient
-        ? 'Nome Completo (Obrigatório)'
-        : 'Nome Completo (Existente - Pode ser atualizado)';
+    final String nameLabel = 'Nome Completo (Obrigatório)';
     final String phoneLabel = isNewClient
         ? 'Número de Contato (Obrigatório para novo)'
-        : 'Número de Contato (Existente - Opcional para atualização)';
+        : 'Número de Contato (Obrigatório para existente)';
     final String addressLabel = isNewClient
         ? 'Endereço de Instalação (Obrigatório para novo)'
-        : 'Endereço de Instalação (Existente - Opcional para atualização)';
+        : 'Endereço de Instalação (Obrigatório para existente)';
 
     // Label para o CPF/CNPJ
     final String identifierLabel = _isIdentifierReadOnly

@@ -67,8 +67,10 @@ class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _passwordFocusNode = FocusNode();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   // Animações para o efeito de entrada do formulário
   late AnimationController _animationController;
@@ -103,6 +105,7 @@ class _LoginPageState extends State<LoginPage>
     _animationController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -163,7 +166,9 @@ class _LoginPageState extends State<LoginPage>
         }
       } else {
         final errorData = jsonDecode(response.body);
-        final message = errorData['error'] ?? 'Erro ao fazer login.';
+        final message = errorData['error'] ??
+            errorData['message'] ??
+            'Erro ao fazer login.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: Colors.red),
         );
@@ -244,6 +249,10 @@ class _LoginPageState extends State<LoginPage>
                             TextField(
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.username],
+                              onSubmitted: (_) => FocusScope.of(context)
+                                  .requestFocus(_passwordFocusNode),
                               style: const TextStyle(color: Colors.black87),
                               decoration: InputDecoration(
                                 filled: true,
@@ -259,13 +268,33 @@ class _LoginPageState extends State<LoginPage>
                             // Campo Senha com preenchimento
                             TextField(
                               controller: _passwordController,
-                              obscureText: true,
+                              focusNode: _passwordFocusNode,
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              autofillHints: const [AutofillHints.password],
+                              onSubmitted: (_) {
+                                if (!_isLoading) {
+                                  _login();
+                                }
+                              },
                               style: const TextStyle(color: Colors.black87),
                               decoration: InputDecoration(
                                 filled: true,
                                 fillColor: Colors.white.withOpacity(0.9),
                                 labelText: 'Senha',
                                 prefixIcon: const Icon(Icons.lock_outline),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),

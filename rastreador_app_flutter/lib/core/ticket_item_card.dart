@@ -87,7 +87,7 @@ class TicketItemCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Cliente: ${ticket.customerName}'),
             Text('Endereço: ${ticket.customerAddress}'),
-            Text('Prioridade: ${ticket.priority}'),
+            Text('Prioridade: ${ticket.priorityLabel}'),
             if (ticket.status == 'APPROVED')
               Text(
                 'Atribuído a: $assignedTechName',
