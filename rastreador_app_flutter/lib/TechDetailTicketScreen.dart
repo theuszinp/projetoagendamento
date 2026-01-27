@@ -29,7 +29,8 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
   @override
   void initState() {
     super.initState();
-    _currentStatus = widget.ticket['status'] ?? 'APPROVED';
+    _currentStatus =
+        widget.ticket['tech_status'] ?? widget.ticket['status'] ?? 'APPROVED';
   }
 
   Future<void> _updateStatus(String newStatus) async {
@@ -65,7 +66,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     try {
       // 💡 CORREÇÃO APLICADA: Rota atualizada para o padrão correto do backend.
       final url =
-          Uri.parse('$API_BASE_URL/tickets/${widget.ticket['id']}/tech-status');
+          Uri.parse('$API_BASE_URL/ticket/${widget.ticket['id']}/tech-status');
 
       final response = await http
           .put(
@@ -181,6 +182,23 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     }
   }
 
+  String _getPriorityLabel(String priority) {
+    switch (priority.toUpperCase()) {
+      case 'HIGH':
+      case 'ALTA':
+        return 'Alta';
+      case 'MEDIUM':
+      case 'MÉDIA':
+      case 'MEDIA':
+        return 'Média';
+      case 'LOW':
+      case 'BAIXA':
+        return 'Baixa';
+      default:
+        return priority;
+    }
+  }
+
   Widget _buildActionButton({
     required String label,
     required String status,
@@ -256,7 +274,10 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
                   'Detalhes do Chamado', LucideIcons.clipboardList),
               _buildDetailCard([
                 _buildDetailRow('Título', ticket['title'] ?? 'N/A'),
-                _buildDetailRow('Prioridade', ticket['priority'] ?? 'N/A'),
+                _buildDetailRow(
+                    'Prioridade',
+                    _getPriorityLabel(
+                        ticket['priority']?.toString() ?? 'N/A')),
                 _buildDetailRow(
                     'Descrição', ticket['description'] ?? 'Sem descrição',
                     isMultiline: true),

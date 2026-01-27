@@ -151,4 +151,21 @@ class Ticket {
         '${createdAt.hour.toString().padLeft(2, '0')}:'
         '${createdAt.minute.toString().padLeft(2, '0')}';
   }
+
+  String get priorityLabel {
+    switch (priority.toUpperCase()) {
+      case 'HIGH':
+      case 'ALTA':
+        return 'Alta';
+      case 'MEDIUM':
+      case 'MÉDIA':
+      case 'MEDIA':
+        return 'Média';
+      case 'LOW':
+      case 'BAIXA':
+        return 'Baixa';
+      default:
+        return priority;
+    }
+  }
 }

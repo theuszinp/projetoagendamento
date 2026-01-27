@@ -18,6 +18,7 @@ class Ticket {
   final String? customerPhone; // ✅ NOVO: Adicionado Telefone
   final DateTime createdAt;
   final String status; // 💡 Adicionado Status para o Técnico ver se já iniciou
+  final String? techStatus;
 
   Ticket({
     required this.id,
@@ -29,6 +30,7 @@ class Ticket {
     this.customerPhone, // ✅ NOVO
     required this.createdAt,
     required this.status, // Novo campo
+    this.techStatus,
   });
 
   // Factory constructor para criar um objeto Ticket a partir de um JSON (Map)
@@ -49,6 +51,7 @@ class Ticket {
           : DateTime.now(),
       // Assumindo que o backend retorna o status
       status: json['status'] as String? ?? 'APPROVED',
+      techStatus: json['tech_status'] as String?,
     );
   }
 
@@ -64,6 +67,7 @@ class Ticket {
       'customer_phone': customerPhone, // ✅ NOVO: Incluindo Telefone para a tela de detalhes
       'created_at': createdAt.toIso8601String(),
       'status': status,
+      'tech_status': techStatus,
     };
   }
 }
@@ -100,7 +104,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
   /// Função para buscar os tickets atribuídos a este técnico
   Future<List<Ticket>> _fetchAssignedTickets() async {
     // 💡 URI para buscar tickets atribuídos
-    final uri = Uri.parse('$API_BASE_URL/tickets/assigned/${widget.techId}');
+    final uri = Uri.parse('$API_BASE_URL/ticket/assigned/${widget.techId}');
     
     try {
       final response = await http.get(
@@ -120,7 +124,10 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
           // 💡 Adicionando filtro: Mostrar apenas tickets que NÃO estão 'COMPLETED' ou 'REJECTED'
           return (data['tickets'] as List)
               .map((json) => Ticket.fromJson(json))
-              .where((ticket) => ticket.status != 'COMPLETED' && ticket.status != 'REJECTED')
+              .where((ticket) {
+                final status = _resolveStatus(ticket);
+                return status != 'COMPLETED' && status != 'REJECTED';
+              })
               .toList();
         }
         return []; // Retorna lista vazia se o corpo for 200, mas sem tickets
@@ -131,7 +138,10 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
       } else {
         // Erro na API (ex: erro 500)
         final errorData = json.decode(response.body);
-        throw Exception(errorData['error'] ?? 'Falha ao carregar tickets. Código: ${response.statusCode}');
+        throw Exception(
+            errorData['error'] ??
+                errorData['message'] ??
+                'Falha ao carregar tickets. Código: ${response.statusCode}');
       }
     } catch (e) {
       // Erro de rede ou timeout
@@ -141,14 +151,31 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
     }
   }
 
+  String _normalizePriority(String priority) {
+    switch (priority.toUpperCase()) {
+      case 'HIGH':
+      case 'ALTA':
+        return 'HIGH';
+      case 'MEDIUM':
+      case 'MÉDIA':
+      case 'MEDIA':
+        return 'MEDIUM';
+      case 'LOW':
+      case 'BAIXA':
+        return 'LOW';
+      default:
+        return priority.toUpperCase();
+    }
+  }
+
   // Mapeia a prioridade para uma cor visualmente distinta
   Color _getPriorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
+    switch (_normalizePriority(priority)) {
+      case 'HIGH':
         return Colors.red.shade600;
-      case 'medium':
+      case 'MEDIUM':
         return Colors.amber.shade700;
-      case 'low':
+      case 'LOW':
       default:
         return Colors.green.shade500;
     }
@@ -159,6 +186,8 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
     switch (status) {
       case 'IN_PROGRESS': return Colors.blue.shade700;
       case 'APPROVED': return Colors.orange.shade700;
+      case 'COMPLETED': return Colors.green.shade700;
+      case 'REJECTED': return Colors.red.shade700;
       default: return Colors.grey;
     }
   }
@@ -167,8 +196,34 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
     switch (status) {
       case 'IN_PROGRESS': return 'EM ANDAMENTO';
       case 'APPROVED': return 'A INICIAR';
+      case 'COMPLETED': return 'CONCLUÍDO';
+      case 'REJECTED': return 'REPROVADO';
       default: return status;
     }
+  }
+
+  String _getPriorityLabel(String priority) {
+    switch (_normalizePriority(priority)) {
+      case 'HIGH':
+        return 'ALTA';
+      case 'MEDIUM':
+        return 'MÉDIA';
+      case 'LOW':
+        return 'BAIXA';
+      default:
+        return priority.toUpperCase();
+    }
+  }
+
+  String _resolveStatus(Ticket ticket) {
+    if (ticket.status.toUpperCase() == 'REJECTED') {
+      return 'REJECTED';
+    }
+    final techStatus = ticket.techStatus?.toUpperCase();
+    if (techStatus != null && techStatus.isNotEmpty) {
+      return techStatus;
+    }
+    return ticket.status.toUpperCase();
   }
 
   @override
@@ -249,6 +304,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
               itemCount: tickets.length,
               itemBuilder: (context, index) {
                 final ticket = tickets[index];
+                final resolvedStatus = _resolveStatus(ticket);
                 
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -281,10 +337,10 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                           children: [
                             Expanded(
                               child: Text(
-                                'Status: ${_getStatusText(ticket.status)}',
+                                'Status: ${_getStatusText(resolvedStatus)}',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: _getStatusColor(ticket.status),
+                                  color: _getStatusColor(resolvedStatus),
                                 ),
                                 overflow: TextOverflow.ellipsis, // corta texto longo com "..."
                               ),
@@ -292,7 +348,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
                             const SizedBox(width: 8), // Pequeno espaço entre os textos
                             Expanded(
                               child: Text(
-                                'Prioridade: ${ticket.priority.toUpperCase()}',
+                                'Prioridade: ${_getPriorityLabel(ticket.priority)}',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: _getPriorityColor(ticket.priority),

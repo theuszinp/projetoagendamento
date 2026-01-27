@@ -47,7 +47,10 @@ class AdminService {
             response.statusCode);
       } else {
         final errorData = json.decode(response.body);
-        throw ApiException(errorData['error'] ?? 'Falha ao carregar técnicos.',
+        throw ApiException(
+            errorData['error'] ??
+                errorData['message'] ??
+                'Falha ao carregar técnicos.',
             response.statusCode);
       }
     } catch (e) {
@@ -56,9 +59,9 @@ class AdminService {
     }
   }
 
-  // --- BUSCAR TICKETS (GET /tickets) ---
+  // --- BUSCAR TICKETS (GET /ticket) ---
   Future<List<dynamic>> fetchTicketsData() async {
-    final url = Uri.parse('$API_BASE_URL/tickets');
+    final url = Uri.parse('$API_BASE_URL/ticket');
     try {
       final response =
           await http.get(url, headers: _getHeaders()).timeout(TIMEOUT_DURATION);
@@ -68,7 +71,10 @@ class AdminService {
         return data['tickets'] ?? [];
       } else {
         final errorData = json.decode(response.body);
-        throw ApiException(errorData['error'] ?? 'Falha ao carregar tickets.',
+        throw ApiException(
+            errorData['error'] ??
+                errorData['message'] ??
+                'Falha ao carregar tickets.',
             response.statusCode);
       }
     } catch (e) {
@@ -77,12 +83,12 @@ class AdminService {
     }
   }
 
-  // --- REPROVAR TICKET (PUT /tickets/:id/reject) ---
+  // --- REPROVAR TICKET (PUT /ticket/:id/reject) ---
   Future<void> rejectTicket({
     required String ticketId,
     required int adminId,
   }) async {
-    final url = Uri.parse('$API_BASE_URL/tickets/$ticketId/reject');
+    final url = Uri.parse('$API_BASE_URL/ticket/$ticketId/reject');
     try {
       final response = await http
           .put(
@@ -94,7 +100,10 @@ class AdminService {
 
       if (response.statusCode != 200) {
         final errorData = json.decode(response.body);
-        throw ApiException(errorData['error'] ?? 'Falha ao reprovar ticket.',
+        throw ApiException(
+            errorData['error'] ??
+                errorData['message'] ??
+                'Falha ao reprovar ticket.',
             response.statusCode);
       }
     } catch (e) {
@@ -103,13 +112,13 @@ class AdminService {
     }
   }
 
-  // --- APROVAR E ATRIBUIR TICKET (PUT /tickets/:id/approve) ---
+  // --- APROVAR E ATRIBUIR TICKET (PUT /ticket/:id/approve) ---
   Future<void> approveTicket({
     required String ticketId,
     required int adminId,
     required int assignedToId,
   }) async {
-    final url = Uri.parse('$API_BASE_URL/tickets/$ticketId/approve');
+    final url = Uri.parse('$API_BASE_URL/ticket/$ticketId/approve');
     try {
       final response = await http
           .put(
@@ -124,7 +133,10 @@ class AdminService {
 
       if (response.statusCode != 200) {
         final errorData = json.decode(response.body);
-        throw ApiException(errorData['error'] ?? 'Falha ao aprovar ticket.',
+        throw ApiException(
+            errorData['error'] ??
+                errorData['message'] ??
+                'Falha ao aprovar ticket.',
             response.statusCode);
       }
     } catch (e) {
