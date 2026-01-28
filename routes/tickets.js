@@ -405,10 +405,11 @@ router.put('/:id/tech-status', authMiddleware, async (req, res) => {
         // 4. Atualiza o status DE TRABALHO do técnico (tech_status)
         const result = await pool.query(
             `UPDATE tickets
-             SET tech_status = $1::VARCHAR(50), 
+             SET tech_status = $1::VARCHAR(50),
                  last_updated_by = $3,
                  updated_at = now(),
-                 completed_at = CASE WHEN $1 = 'COMPLETED' THEN now() ELSE completed_at END
+                 started_at = CASE WHEN $1 = 'IN_PROGRESS' THEN COALESCE(started_at, now()) ELSE started_at END,
+                 completed_at = CASE WHEN $1 = 'COMPLETED' THEN COALESCE(completed_at, now()) ELSE completed_at END
              WHERE id = $2 RETURNING *`,
             [new_status, ticketId, userId]
         );
