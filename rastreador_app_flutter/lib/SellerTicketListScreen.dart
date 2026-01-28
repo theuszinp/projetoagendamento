@@ -80,6 +80,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
       final response = await http.get(
         url,
         headers: {
+          'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${widget.authToken}',
         },
@@ -93,17 +94,33 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
         });
         _animController.forward(from: 0);
       } else {
-        final errorData = json.decode(response.body);
+        Map<String, dynamic>? errorData;
+        try {
+          final decoded = json.decode(response.body);
+          if (decoded is Map<String, dynamic>) errorData = decoded;
+        } catch (_) {
+          // backend pode devolver HTML (502/504) ou body vazio
+          errorData = null;
+        }
+
         setState(() {
-          _errorMessage = errorData['error'] ??
-              errorData['message'] ??
-              'Falha ao carregar tickets. Código: ${response.statusCode}';
+          final fallback = 'Falha ao carregar tickets. Código: ${response.statusCode}';
+          final msg = errorData?['error'] ?? errorData?['message'] ?? fallback;
+          if (errorData == null) {
+            final preview = response.body.trim();
+            final shortPreview = preview.length > 120
+                ? '${preview.substring(0, 120)}…'
+                : preview;
+            _errorMessage = '$msg\n(resposta: "$shortPreview")';
+          } else {
+            _errorMessage = msg.toString();
+          }
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Erro de rede ou servidor.';
+        _errorMessage = 'Erro de rede ou servidor: ${e.toString()}';
         _isLoading = false;
       });
       // ignore: avoid_print
@@ -294,10 +311,28 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
 
     if (_errorMessage != null) {
       return Center(
-        child: Text(
-          '⚠️ $_errorMessage',
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.redAccent, fontSize: 16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '⚠️ $_errorMessage',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 15),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _fetchSellerTickets,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tentar novamente'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withOpacity(0.35)),
+                ),
+              )
+            ],
+          ),
         ),
       );
     }
@@ -312,20 +347,38 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
         message = 'Nenhum chamado reprovado encontrado.';
       }
 
-      return Center(
-        child: Text(
-          message,
-          style: const TextStyle(color: Colors.white70, fontSize: 16),
+      return RefreshIndicator(
+        color: trackerYellow,
+        onRefresh: _fetchSellerTickets,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          children: [
+            const SizedBox(height: 40),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      itemCount: filteredTickets.length,
-      itemBuilder: (context, index) {
-        return _buildTicketItem(filteredTickets[index] as Map<String, dynamic>);
-      },
+    return RefreshIndicator(
+      color: trackerYellow,
+      onRefresh: _fetchSellerTickets,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        itemCount: filteredTickets.length,
+        itemBuilder: (context, index) {
+          return _buildTicketItem(filteredTickets[index] as Map<String, dynamic>);
+        },
+      ),
     );
   }
 

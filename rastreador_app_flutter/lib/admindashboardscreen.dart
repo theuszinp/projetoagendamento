@@ -35,6 +35,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // Instância do serviço
   late final AdminService _adminService;
 
+  String _formatError(Object e) {
+    if (e is ApiException) return e.message;
+    // Fallback seguro (sem split ':' que pode quebrar em FormatException, SocketException, etc.)
+    return e.toString();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -74,9 +80,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     } on Exception catch (e) {
       if (mounted) {
         setState(() {
-          // Limpa a exceção para exibir apenas a mensagem de erro da API
-          _errorMessage =
-              'Erro ao carregar técnicos: ${e.toString().split(':')[1].trim()}';
+          _errorMessage = 'Erro ao carregar técnicos: ${_formatError(e)}';
           _isLoadingTechs = false;
         });
       }
@@ -103,8 +107,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     } on Exception catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage =
-              'Erro ao carregar tickets: ${e.toString().split(':')[1].trim()}';
+          _errorMessage = 'Erro ao carregar tickets: ${_formatError(e)}';
           _isLoadingTickets = false;
         });
       }

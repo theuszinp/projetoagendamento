@@ -110,6 +110,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
       final response = await http.get(
         uri,
         headers: {
+            'Accept': 'application/json',
             'Content-Type': 'application/json',
             // O token é enviado no cabeçalho Authorization
             'Authorization': 'Bearer ${widget.authToken}',
@@ -136,12 +137,25 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
         // Exemplo: Técnico sem tickets (o backend pode retornar 404 ou 200 com lista vazia)
         return [];
       } else {
-        // Erro na API (ex: erro 500)
-        final errorData = json.decode(response.body);
-        throw Exception(
-            errorData['error'] ??
-                errorData['message'] ??
-                'Falha ao carregar tickets. Código: ${response.statusCode}');
+        // Erro na API (ex: erro 401/403/500) — tenta ler JSON, mas não assume.
+        Map<String, dynamic>? errorData;
+        try {
+          final decoded = json.decode(response.body);
+          if (decoded is Map<String, dynamic>) errorData = decoded;
+        } catch (_) {
+          errorData = null;
+        }
+
+        final fallback = 'Falha ao carregar tickets. Código: ${response.statusCode}';
+        final msg = errorData?['error'] ?? errorData?['message'] ?? fallback;
+        if (errorData == null) {
+          final preview = response.body.trim();
+          final shortPreview = preview.length > 160
+              ? '${preview.substring(0, 160)}…'
+              : preview;
+          throw Exception('$msg (resposta não-JSON: "$shortPreview")');
+        }
+        throw Exception(msg.toString());
       }
     } catch (e) {
       // Erro de rede ou timeout
