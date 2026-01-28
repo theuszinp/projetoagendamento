@@ -40,7 +40,7 @@ const ticketRoutes = require('./routes/tickets');
 app.use('/', authRoutes);          // /login, /users (criação)
 app.use('/users', userRoutes);     // Rotas protegidas de usuários
 app.use('/clients', clientRoutes); // Rotas protegidas de clientes
-app.use('/ticket', ticketRoutes); // 💡 CORRIGIDO para o singular '/ticket'
+app.use('/tickets', ticketRoutes); // 💡 CORRIGIDO para o singular '/ticket'
 
 // Health check (rota pública)
 app.get('/', (req, res) => {
