@@ -1,147 +1,37 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart'; // Para debugPrint
+import 'package:flutter/foundation.dart';
 
-// URL base do seu backend
-const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
-const Duration TIMEOUT_DURATION = Duration(seconds: 15);
-
-// Classe de Exceção para erros de API específicos
-class ApiException implements Exception {
-  final String message;
-  final int statusCode;
-  ApiException(this.message, [this.statusCode = 0]);
-
-  @override
-  String toString() => 'ApiException [$statusCode]: $message';
-}
+import 'api_client.dart';
 
 class AdminService {
-  final String authToken;
+  final ApiClient _api;
 
-  AdminService({required this.authToken});
+  AdminService(this._api);
 
-  Map<String, String> _getHeaders() {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $authToken',
-    };
-  }
-
-  // --- BUSCAR TÉCNICOS (GET /users) ---
-  // Retorna uma lista de Map<String, dynamic> para ser mapeada para o modelo User fora do Service.
+  /// GET /users (admin)
   Future<List<dynamic>> fetchTechniciansData() async {
-    final url = Uri.parse('$API_BASE_URL/users');
-    try {
-      final response =
-          await http.get(url, headers: _getHeaders()).timeout(TIMEOUT_DURATION);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['users'] is List) {
-          // Filtra aqui, mas você pode deixar o filtro 'tech' no Dashboard para flexibilidade.
-          // Por enquanto, retorna a lista bruta para ser filtrada no ViewModel/Widget.
-          return data['users'];
-        }
-        throw ApiException('Formato de resposta inesperado ao buscar usuários.',
-            response.statusCode);
-      } else {
-        final errorData = json.decode(response.body);
-        throw ApiException(
-            errorData['error'] ??
-                errorData['message'] ??
-                'Falha ao carregar técnicos.',
-            response.statusCode);
-      }
-    } catch (e) {
-      debugPrint('Erro em fetchTechnicians: $e');
-      rethrow; // Propaga a exceção para ser tratada na UI
-    }
+    final data = await _api.getJson('/users');
+    final users = (data['users'] as List?) ?? [];
+    return users;
   }
 
-  // --- BUSCAR TICKETS (GET /ticket) ---
+  /// GET /tickets (admin)
   Future<List<dynamic>> fetchTicketsData() async {
-    final url = Uri.parse('$API_BASE_URL/ticket');
-    try {
-      final response =
-          await http.get(url, headers: _getHeaders()).timeout(TIMEOUT_DURATION);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['tickets'] ?? [];
-      } else {
-        final errorData = json.decode(response.body);
-        throw ApiException(
-            errorData['error'] ??
-                errorData['message'] ??
-                'Falha ao carregar tickets.',
-            response.statusCode);
-      }
-    } catch (e) {
-      debugPrint('Erro em fetchTickets: $e');
-      rethrow;
-    }
+    final data = await _api.getJson('/tickets');
+    final tickets = (data['tickets'] as List?) ?? [];
+    return tickets;
   }
 
-  // --- REPROVAR TICKET (PUT /ticket/:id/reject) ---
-  Future<void> rejectTicket({
-    required String ticketId,
-    required int adminId,
-  }) async {
-    final url = Uri.parse('$API_BASE_URL/ticket/$ticketId/reject');
-    try {
-      final response = await http
-          .put(
-            url,
-            headers: _getHeaders(),
-            body: json.encode({'admin_id': adminId}),
-          )
-          .timeout(TIMEOUT_DURATION);
-
-      if (response.statusCode != 200) {
-        final errorData = json.decode(response.body);
-        throw ApiException(
-            errorData['error'] ??
-                errorData['message'] ??
-                'Falha ao reprovar ticket.',
-            response.statusCode);
-      }
-    } catch (e) {
-      debugPrint('Erro em rejectTicket: $e');
-      rethrow;
-    }
+  /// PUT /tickets/:id/reject
+  Future<void> rejectTicket(int ticketId, {String? reason}) async {
+    await _api.putJson('/tickets/$ticketId/reject', body: {
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+    });
   }
 
-  // --- APROVAR E ATRIBUIR TICKET (PUT /ticket/:id/approve) ---
-  Future<void> approveTicket({
-    required String ticketId,
-    required int adminId,
-    required int assignedToId,
-  }) async {
-    final url = Uri.parse('$API_BASE_URL/ticket/$ticketId/approve');
-    try {
-      final response = await http
-          .put(
-            url,
-            headers: _getHeaders(),
-            body: json.encode({
-              'admin_id': adminId,
-              'assigned_to': assignedToId,
-            }),
-          )
-          .timeout(TIMEOUT_DURATION);
-
-      if (response.statusCode != 200) {
-        final errorData = json.decode(response.body);
-        throw ApiException(
-            errorData['error'] ??
-                errorData['message'] ??
-                'Falha ao aprovar ticket.',
-            response.statusCode);
-      }
-    } catch (e) {
-      debugPrint('Erro em approveTicket: $e');
-      rethrow;
-    }
+  Future<void> approveTicket(int ticketId, {int? techId}) async {
+    // Alguns backends usam um endpoint /approve; aqui usamos o PUT padrão
+    await _api.putJson('/tickets/$ticketId/approve', body: {
+      if (techId != null) 'assigned_to': techId,
+    });
   }
 }
