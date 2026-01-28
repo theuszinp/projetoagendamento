@@ -18,6 +18,11 @@ dependencies:
   firebase_messaging: ^14.7.12
   cupertino_icons: ^1.0.8 # Versão atualizada
   lucide_icons_flutter: ^1.0.0 # Mantido para corresponder à sua lista original
+  go_router: ^14.2.0
+  flutter_secure_storage: ^9.2.2
+  dio: ^5.7.0
+  jwt_decoder: ^2.0.1
+  provider: ^6.1.2
 
 dev_dependencies:
   flutter_test:
