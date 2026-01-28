@@ -76,7 +76,7 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     });
 
     try {
-      final url = Uri.parse('$API_BASE_URL/ticket/requested/${widget.userId}');
+      final url = Uri.parse('$API_BASE_URL/tickets/requested/${widget.userId}');
       final response = await http.get(
         url,
         headers: {

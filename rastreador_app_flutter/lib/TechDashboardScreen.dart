@@ -104,7 +104,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
   /// Função para buscar os tickets atribuídos a este técnico
   Future<List<Ticket>> _fetchAssignedTickets() async {
     // 💡 URI para buscar tickets atribuídos
-    final uri = Uri.parse('$API_BASE_URL/ticket/assigned/${widget.techId}');
+    final uri = Uri.parse('$API_BASE_URL/ticketss/assigned/${widget.techId}');
     
     try {
       final response = await http.get(

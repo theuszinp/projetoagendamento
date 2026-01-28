@@ -25,6 +25,7 @@ class TechDetailTicketScreen extends StatefulWidget {
 class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
   late String _currentStatus;
   bool _isProcessing = false;
+  bool _statusChanged = false;
 
   @override
   void initState() {
@@ -66,7 +67,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
     try {
       // 💡 CORREÇÃO APLICADA: Rota atualizada para o padrão correto do backend.
       final url =
-          Uri.parse('$API_BASE_URL/ticket/${widget.ticket['id']}/tech-status');
+          Uri.parse('$API_BASE_URL/ticketss/${widget.ticket['id']}/tech-status');
 
       final response = await http
           .put(
@@ -83,12 +84,18 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        setState(() => _currentStatus = newStatus);
+        setState(() {
+          _currentStatus = newStatus;
+          _statusChanged = true;
+        });
         _showSnackBar(
           'Status atualizado para ${_getStatusText(newStatus)} com sucesso!',
           Colors.green,
         );
-        Navigator.pop(context, true);
+        if (newStatus == 'COMPLETED' || newStatus == 'REJECTED') {
+          Navigator.pop(context, true);
+        }
+
       } else {
         final data = jsonDecode(response.body);
         _showSnackBar(
@@ -247,8 +254,7 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
 
     return WillPopScope(
       onWillPop: () async {
-        Navigator.pop(context,
-            _currentStatus == 'COMPLETED' || _currentStatus == 'IN_PROGRESS');
+        Navigator.pop(context, _statusChanged);
         return false;
       },
       child: Scaffold(

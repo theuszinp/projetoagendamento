@@ -30,6 +30,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
   // Variáveis CRÍTICAS para a API
   int? _clientId; // ID numérico retornado pela busca (OPCIONAL)
+  String? _suggestedClientAddress;
   String? _selectedPriority; // Prioridade do serviço (OBRIGATÓRIO para a API)
 
   // Controladores
@@ -79,6 +80,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     setState(() {
       _isSearching = true;
       _clientId = null; // Reseta o ID do cliente
+      _suggestedClientAddress = null;
       // Ao iniciar a busca/limpar, permite edição e identificador editável
       _isClientDataReadOnly = false;
       _isIdentifierReadOnly = false;
@@ -109,7 +111,10 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             _clientId = clientData['id'];
             _customerNameController.text =
                 clientData['name'] ?? 'Cliente sem nome';
-            _addressController.text = clientData['address'] ?? '';
+            _suggestedClientAddress = clientData['address']?.toString();
+            // ⚠️ Endereço/local de instalação NÃO é preenchido automaticamente.
+            // O usuário pode optar por usar o endereço cadastrado tocando no botão abaixo do campo.
+            // _addressController.text permanece como o usuário definir.
             _phoneNumberController.text = clientData['phoneNumber'] ?? '';
 
             // TRAVA APENAS O CAMPO DE BUSCA (CPF/CNPJ)
@@ -131,6 +136,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
             _customerNameController.clear();
             _addressController.clear();
             _phoneNumberController.clear();
+            _suggestedClientAddress = null;
             _isClientDataReadOnly = false;
             _isIdentifierReadOnly = false;
           });
@@ -256,7 +262,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
       final response = await http
           .post(
-            Uri.parse('$API_BASE_URL/ticket'),
+            Uri.parse('$API_BASE_URL/tickets'),
             headers: {
               'Content-Type': 'application/json',
               'Authorization':
@@ -489,6 +495,48 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   return null;
                 },
               ),
+              
+              if (_suggestedClientAddress != null &&
+                  _suggestedClientAddress!.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Endereço cadastrado encontrado (não é preenchido automaticamente):',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _suggestedClientAddress!,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _addressController.text = _suggestedClientAddress!;
+                            });
+                          },
+                          icon: const Icon(LucideIcons.mapPin, size: 16),
+                          label: Text(
+                            'Usar endereço do cadastro',
+                            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 30),
 
               // --- 3. DADOS DO TICKET ---
