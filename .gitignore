@@ -10,6 +10,8 @@ serviceAccountKey.json
 /firebase-service-account-key.json
 *.json
 
+android/local.properties
+
 Logs e outros
 npm-debug.log*
 yarn-debug.log*

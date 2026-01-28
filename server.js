@@ -36,11 +36,15 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const clientRoutes = require('./routes/clients');
 const ticketRoutes = require('./routes/tickets');
+const reportRoutes = require('./routes/reports');
 
 app.use('/', authRoutes);          // /login, /users (criação)
 app.use('/users', userRoutes);     // Rotas protegidas de usuários
 app.use('/clients', clientRoutes); // Rotas protegidas de clientes
-app.use('/tickets', ticketRoutes); // 💡 CORRIGIDO para o singular '/ticket'
+app.use('/tickets', ticketRoutes);
+app.use('/ticket', ticketRoutes);
+app.use('/reports', reportRoutes); // relatórios admin // alias compatível (singular)
+ // 💡 CORRIGIDO para o singular '/ticket'
 
 // Health check (rota pública)
 app.get('/', (req, res) => {
