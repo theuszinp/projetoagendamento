@@ -1,6 +1,7 @@
 // Caminho esperado do arquivo: lib/screens/admin_dashboard_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // Imports solicitados
 import 'package:rastreador_app_flutter/core/admin_service.dart';
@@ -44,7 +45,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _adminService = AdminService(authToken: widget.authToken);
+    _adminService = AdminService(context.read<ApiClient>());
     _loadData();
   }
 

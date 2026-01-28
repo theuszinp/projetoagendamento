@@ -1,12 +1,11 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'core/api_client.dart';
+import 'core/widgets/skeletons.dart';
 // 💡 IMPORTANTE: Importa a tela de detalhes que acabamos de criar
 import 'TechDetailTicketScreen.dart'; // Ajuste o nome do arquivo se for diferente
 
 // URL base do seu backend (repetida para garantir que o arquivo seja independente)
-const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
-
 /// Define a estrutura de dados esperada para um Ticket
 class Ticket {
   final int id;
@@ -103,65 +102,15 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
 
   /// Função para buscar os tickets atribuídos a este técnico
   Future<List<Ticket>> _fetchAssignedTickets() async {
-    // 💡 URI para buscar tickets atribuídos
-    final uri = Uri.parse('$API_BASE_URL/ticketss/assigned/${widget.techId}');
-    
+    final api = context.read<ApiClient>();
     try {
-      final response = await http.get(
-        uri,
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            // O token é enviado no cabeçalho Authorization
-            'Authorization': 'Bearer ${widget.authToken}',
-        }
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        // Verifica se 'tickets' é uma lista e a mapeia para objetos Ticket
-        if (data['tickets'] is List) {
-          // 💡 Adicionando filtro: Mostrar apenas tickets que NÃO estão 'COMPLETED' ou 'REJECTED'
-          return (data['tickets'] as List)
-              .map((json) => Ticket.fromJson(json))
-              .where((ticket) {
-                final status = _resolveStatus(ticket);
-                return status != 'COMPLETED' && status != 'REJECTED';
-              })
-              .toList();
-        }
-        return []; // Retorna lista vazia se o corpo for 200, mas sem tickets
-        
-      } else if (response.statusCode == 404) {
-        // Exemplo: Técnico sem tickets (o backend pode retornar 404 ou 200 com lista vazia)
-        return [];
-      } else {
-        // Erro na API (ex: erro 401/403/500) — tenta ler JSON, mas não assume.
-        Map<String, dynamic>? errorData;
-        try {
-          final decoded = json.decode(response.body);
-          if (decoded is Map<String, dynamic>) errorData = decoded;
-        } catch (_) {
-          errorData = null;
-        }
-
-        final fallback = 'Falha ao carregar tickets. Código: ${response.statusCode}';
-        final msg = errorData?['error'] ?? errorData?['message'] ?? fallback;
-        if (errorData == null) {
-          final preview = response.body.trim();
-          final shortPreview = preview.length > 160
-              ? '${preview.substring(0, 160)}…'
-              : preview;
-          throw Exception('$msg (resposta não-JSON: "$shortPreview")');
-        }
-        throw Exception(msg.toString());
-      }
+      final data =
+          await api.getJsonList('/tickets/assigned/${widget.techId}');
+      return data
+          .map((e) => Ticket.fromJson((e as Map).cast<String, dynamic>()))
+          .toList();
     } catch (e) {
-      // Erro de rede ou timeout
-      // ignore: avoid_print
-      print('Erro ao buscar chamados: $e');
-      throw Exception('Erro de conexão ao buscar chamados: $e');
+      rethrow;
     }
   }
 
@@ -261,7 +210,7 @@ class _TechDashboardScreenState extends State<TechDashboardScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             // Estado de carregamento
-            return const Center(child: CircularProgressIndicator());
+            return const ListSkeleton();
           } else if (snapshot.hasError) {
             // Estado de erro (ex: falha de rede)
             return Center(

@@ -1,13 +1,11 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'core/api_client.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // Substitua pelo seu BASE_URL
-const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
-
 class CreateTicketScreen extends StatefulWidget {
   // Recebe o ID do usuário logado (requested_by) da HomeScreen
   final int requestedByUserId;
@@ -90,62 +88,31 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     });
 
     try {
-      final url =
-          Uri.parse('$API_BASE_URL/clients/search?identifier=$identifier');
-      final response = await http.get(
-        url,
-        // 💡 Adicionado o token para proteger a rota de busca de clientes
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${widget.authToken}',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final api = context.read<ApiClient>();
+      final data = await api.getJson('/clients/search', query: {'identifier': identifier});
+      final clientData = (data['client'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final clientData = data['client'] as Map<String, dynamic>? ?? {};
-
+      if (clientData.isNotEmpty) {
         if (mounted) {
           setState(() {
-            // O cliente foi encontrado: preenche os campos
             _clientId = clientData['id'];
-            _customerNameController.text =
-                clientData['name'] ?? 'Cliente sem nome';
+            _customerNameController.text = clientData['name'] ?? 'Cliente sem nome';
             _suggestedClientAddress = clientData['address']?.toString();
-            // ⚠️ Endereço/local de instalação NÃO é preenchido automaticamente.
-            // O usuário pode optar por usar o endereço cadastrado tocando no botão abaixo do campo.
-            // _addressController.text permanece como o usuário definir.
-            _phoneNumberController.text = clientData['phoneNumber'] ?? '';
+            _addressController.text = clientData['address']?.toString() ?? '';
+            _phoneNumberController.text = clientData['phone']?.toString() ?? '';
 
-            // TRAVA APENAS O CAMPO DE BUSCA (CPF/CNPJ)
+            // Ao encontrar, bloqueia edição dos dados principais por padrão
+            _isClientDataReadOnly = true;
             _isIdentifierReadOnly = true;
-            // MANTÉM OS DEMAIS CAMPOS EDITÁVEIS (false)
-            _isClientDataReadOnly = false;
           });
         }
-        _showSnackBar(
-            '✅ Cliente encontrado! Revise/atualize os dados.', Colors.green);
-      } else if (response.statusCode == 401) {
-        _showSnackBar(
-            '🚫 Token de autenticação expirado. Faça o login novamente.',
-            Colors.red);
+        _showSnackBar('✅ Cliente encontrado.', Colors.green);
       } else {
-        // Cliente NÃO encontrado: limpa e mantém campos editáveis.
-        if (mounted) {
-          setState(() {
-            _customerNameController.clear();
-            _addressController.clear();
-            _phoneNumberController.clear();
-            _suggestedClientAddress = null;
-            _isClientDataReadOnly = false;
-            _isIdentifierReadOnly = false;
-          });
-        }
         _showSnackBar(
             '⚠️ Cliente não encontrado. Preencha os dados para novo cadastro.',
             Colors.red);
       }
-    } catch (e) {
+    } on ApiException catch (_) {
       _showSnackBar('❌ Erro de conexão ao buscar cliente.', Colors.deepOrange);
       // ignore: avoid_print
       print('Erro ao buscar cliente: $e');
@@ -260,33 +227,15 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         body['clientId'] = _clientId;
       }
 
-      final response = await http
-          .post(
-            Uri.parse('$API_BASE_URL/tickets'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization':
-                  'Bearer ${widget.authToken}', // 💡 Adicionado token
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 15));
+      final api = context.read<ApiClient>();
+      await api.postJson('/tickets', body: body);
 
-      if (response.statusCode == 201) {
-        _formKey.currentState!.reset();
-        _clearForm();
-        _showSnackBar(
-            '✅ Agendamento criado com sucesso! Pendente de aprovação do Admin.',
-            Colors.green);
-      } else if (response.statusCode == 401) {
-        _showSnackBar(
-            '🚫 Token de autenticação expirado. Faça o login novamente.',
-            Colors.red);
-      } else {
-        final errorData = jsonDecode(response.body);
-        String message = errorData['error'] ?? 'Falha ao criar agendamento.';
-        _showSnackBar(
-            '⚠️ Erro: $message (Código: ${response.statusCode})', Colors.red);
+      _formKey.currentState!.reset();
+      _clearForm();
+      _showSnackBar(
+          '✅ Agendamento criado com sucesso! Pendente de aprovação do Admin.',
+          Colors.green);
+)', Colors.red);
       }
     } catch (e) {
       _showSnackBar(

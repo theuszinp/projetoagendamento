@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'core/api_client.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart'; // ✅ Importação correta
-
-const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
 
 class TechDetailTicketScreen extends StatefulWidget {
   final String authToken;
@@ -37,76 +35,50 @@ class _TechDetailTicketScreenState extends State<TechDetailTicketScreen> {
   Future<void> _updateStatus(String newStatus) async {
     if (_isProcessing) return;
 
-    String confirmTitle = '';
-    String confirmContent = '';
-    Color confirmColor = Colors.blue;
+    // Confirmação (mantida)
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Confirmar atualização'),
+            content: Text('Deseja atualizar o status para: $newStatus ?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirmar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
 
-    if (newStatus == 'IN_PROGRESS') {
-      confirmTitle = 'Iniciar Serviço';
-      confirmContent = 'Deseja realmente iniciar este serviço agora?';
-      confirmColor = Colors.orange;
-    } else if (newStatus == 'COMPLETED') {
-      confirmTitle = 'Concluir Serviço';
-      confirmContent =
-          'Tem certeza que deseja marcar este serviço como concluído? Esta ação é final.';
-      confirmColor = Colors.green;
-    }
-
-    final confirm = await _confirmDialog(
-      title: confirmTitle,
-      content: confirmContent,
-      confirmText: 'Confirmar',
-      confirmColor: confirmColor,
-    );
-
-    if (confirm != true) return;
-    if (!mounted) return;
+    if (!confirmed) return;
 
     setState(() => _isProcessing = true);
 
     try {
-      // 💡 CORREÇÃO APLICADA: Rota atualizada para o padrão correto do backend.
-      final url =
-          Uri.parse('$API_BASE_URL/ticketss/${widget.ticket['id']}/tech-status');
+      final api = context.read<ApiClient>();
+      await api.putJson('/tickets/${widget.ticket['id']}/tech-status', body: {'new_status': newStatus});
 
-      final response = await http
-          .put(
-            url,
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ${widget.authToken}',
-            },
-            body: jsonEncode({
-              'new_status': newStatus,
-              'user_id': widget.techId,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _currentStatus = newStatus;
-          _statusChanged = true;
-        });
-        _showSnackBar(
-          'Status atualizado para ${_getStatusText(newStatus)} com sucesso!',
-          Colors.green,
-        );
-        if (newStatus == 'COMPLETED' || newStatus == 'REJECTED') {
-          Navigator.pop(context, true);
-        }
-
-      } else {
-        final data = jsonDecode(response.body);
-        _showSnackBar(
-          data['error'] ?? 'Falha ao atualizar status (${response.statusCode})',
-          Colors.red,
-        );
-        debugPrint('Erro API: ${response.body}');
-      }
-    } catch (e) {
-      _showSnackBar('Erro de rede. Verifique sua conexão.', Colors.orange);
-      debugPrint('Erro de rede: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Status atualizado com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }

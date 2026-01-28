@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'dart:ui'; // Necessário para o BackdropFilter
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'core/api_client.dart';
+import 'core/widgets/skeletons.dart';
 
 // 🌐 URL base do seu backend
-const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
-
 // 🎨 Cores principais (As mesmas definidas no arquivo main.dart)
 const Color trackerBlue = Color(0xFF322C8E);
 const Color trackerYellow = Color(0xFFFFD700);
@@ -76,55 +75,24 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     });
 
     try {
-      final url = Uri.parse('$API_BASE_URL/tickets/requested/${widget.userId}');
-      final response = await http.get(
-        url,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${widget.authToken}',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _allTickets = data['tickets'] ?? [];
-          _isLoading = false;
-        });
-        _animController.forward(from: 0);
-      } else {
-        Map<String, dynamic>? errorData;
-        try {
-          final decoded = json.decode(response.body);
-          if (decoded is Map<String, dynamic>) errorData = decoded;
-        } catch (_) {
-          // backend pode devolver HTML (502/504) ou body vazio
-          errorData = null;
-        }
-
-        setState(() {
-          final fallback = 'Falha ao carregar tickets. Código: ${response.statusCode}';
-          final msg = errorData?['error'] ?? errorData?['message'] ?? fallback;
-          if (errorData == null) {
-            final preview = response.body.trim();
-            final shortPreview = preview.length > 120
-                ? '${preview.substring(0, 120)}…'
-                : preview;
-            _errorMessage = '$msg\n(resposta: "$shortPreview")';
-          } else {
-            _errorMessage = msg.toString();
-          }
-          _isLoading = false;
-        });
-      }
+      final api = context.read<ApiClient>();
+      final data = await api.getJson('/tickets/requested/${widget.userId}');
+      final tickets = (data['tickets'] as List?) ?? [];
+      setState(() {
+        _tickets = tickets;
+      });
+    } on ApiException catch (e) {
+      setState(() {
+        _errorMessage = e.message;
+      });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Erro de rede ou servidor: ${e.toString()}';
-        _isLoading = false;
+        _errorMessage = 'Erro ao buscar tickets: $e';
       });
-      // ignore: avoid_print
-      print('Erro ao buscar tickets: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -304,12 +272,10 @@ class _SellerTicketListScreenState extends State<SellerTicketListScreen>
     }).toList();
 
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: trackerYellow),
-      );
+      return const ListSkeleton();
     }
 
-    if (_errorMessage != null) {
+if (_errorMessage != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),

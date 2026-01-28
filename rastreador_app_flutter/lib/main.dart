@@ -1,61 +1,95 @@
-import 'dart:convert';
-import 'dart:ui'; // Necessário para o BackdropFilter (Efeito de Vidro Fosco)
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-// 🧩 Importações de telas
-import 'create_ticket_screen.dart';
-import 'techdashboardscreen.dart';
+import 'core/api_client.dart';
+import 'core/auth/auth_repository.dart';
+import 'core/auth/auth_state.dart';
+import 'core/auth/auth_storage.dart';
+import 'routing/app_router.dart';
+import 'ui/splash_screen.dart';
+
+// 🧩 Importações de telas existentes usadas pelos shells
 import 'admindashboardscreen.dart';
+import 'create_ticket_screen.dart';
+import 'TechDashboardScreen.dart';
 import 'SellerTicketListScreen.dart';
-
-// 🌐 URL base do backend
-const String API_BASE_URL = 'https://projetoagendamento-n20v.onrender.com';
+import 'TechDetailTicketScreen.dart';
 
 // 🎨 Cores oficiais da TrackerCarsat
 const Color trackerBlue = Color(0xFF322C8E);
 const Color trackerYellow = Color(0xFFFFD700);
 
 void main() {
-  runApp(const RastreadorApp());
+  runApp(const AppRoot());
 }
 
-class RastreadorApp extends StatelessWidget {
-  const RastreadorApp({super.key});
+class AppRoot extends StatefulWidget {
+  const AppRoot({super.key});
+
+  @override
+  State<AppRoot> createState() => _AppRootState();
+}
+
+class _AppRootState extends State<AppRoot> {
+  late final AuthState _auth;
+  late final ApiClient _api;
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // DI simples (sem circular)
+    late AuthState authRef;
+    _api = ApiClient(
+      tokenProvider: () => authRef.token,
+      onUnauthorized: () => authRef.logout(silent: true),
+    );
+    final storage = AuthStorage();
+    final repo = AuthRepository(_api, storage);
+    authRef = AuthState(repo);
+    _auth = authRef;
+
+    _router = createRouter(_auth);
+
+    // bootstrap (token persistente + auto-login)
+    _auth.bootstrap();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TrackerCarsat',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: trackerBlue,
-          primary: trackerBlue,
-          secondary: trackerYellow,
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white,
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: trackerBlue,
-            foregroundColor: Colors.white,
-            // Mantendo o border radius mais arredondado do Cód. 1 para o tema geral
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: _auth),
+        Provider<ApiClient>.value(value: _api),
+      ],
+      child: MaterialApp.router(
+        title: 'TrackerCarsat',
+        debugShowCheckedModeBanner: false,
+        routerConfig: _router,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: trackerBlue,
+            primary: trackerBlue,
+            secondary: trackerYellow,
+          ),
+          useMaterial3: true,
+          scaffoldBackgroundColor: Colors.white,
+          appBarTheme: const AppBarTheme(
+            centerTitle: false,
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 0,
           ),
         ),
       ),
-      home: const LoginPage(),
     );
   }
 }
 
-// =====================================================
-// 🧭 TELA DE LOGIN (COM VISUAL MELHORADO DO CÓDIGO 1)
-// =====================================================
-
+/// ✅ Login com token persistente (Secure Storage) + redirect automático (go_router guard)
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -72,7 +106,6 @@ class _LoginPageState extends State<LoginPage>
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // Animações para o efeito de entrada do formulário
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -80,21 +113,25 @@ class _LoginPageState extends State<LoginPage>
   @override
   void initState() {
     super.initState();
+
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 700),
     );
 
     _fadeAnimation = CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeIn,
+      curve: Curves.easeOut,
     );
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
+      begin: const Offset(0, 0.1),
       end: Offset.zero,
     ).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ),
     );
 
     _animationController.forward();
@@ -112,8 +149,8 @@ class _LoginPageState extends State<LoginPage>
   Future<void> _login() async {
     setState(() => _isLoading = true);
 
-    final String email = _emailController.text.trim();
-    final String senha = _passwordController.text;
+    final email = _emailController.text.trim();
+    final senha = _passwordController.text;
 
     if (email.isEmpty || senha.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -127,61 +164,24 @@ class _LoginPageState extends State<LoginPage>
     }
 
     try {
-      final response = await http.post(
-        Uri.parse('$API_BASE_URL/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'senha': senha}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        // 💡 CORREÇÃO APLICADA: Extraindo o objeto 'user' para obter 'name' e 'role'
-        final userDataMap = data['user'] as Map<String, dynamic>? ?? {};
-        final token = data['token'] ?? 'fake-token';
-
-        final role = (userDataMap['role'] ?? '').toString().toLowerCase();
-        final userId = int.tryParse(userDataMap['id'].toString()) ?? 0;
-
-        // Redireciona conforme a função do usuário
-        if (role == 'admin') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  AdminDashboardScreen(authToken: token, userId: userId),
-            ),
-          );
-        } else {
-          // Redireciona para a HomeScreen (Vendedor/Técnico)
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => HomeScreen(
-                  userData: userDataMap,
-                  authToken:
-                      token), // Passando o mapa de dados do usuário corrigido
-            ),
-          );
-        }
-      } else {
-        final errorData = jsonDecode(response.body);
-        final message = errorData['error'] ??
-            errorData['message'] ??
-            'Erro ao fazer login.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red),
-        );
-      }
-    } catch (_) {
+      await context.read<AuthState>().login(email: email, senha: senha);
+      // go_router vai redirecionar automaticamente baseado no role
+    } on ApiException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Erro de conexão. Verifique sua internet.'),
-          backgroundColor: Colors.redAccent,
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro: $e'),
+          backgroundColor: Colors.red,
         ),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -191,340 +191,123 @@ class _LoginPageState extends State<LoginPage>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 🌄 Imagem de fundo com overlay escuro
+          // Fundo com imagem
           Image.asset(
             'assets/background.png',
             fit: BoxFit.cover,
-            color: Colors.black.withOpacity(0.45),
-            colorBlendMode: BlendMode.darken,
           ),
-
-          // ✨ Formulário com efeito de vidro (frosted glass) e animação
-          Center(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      // Efeito de Vidro Fosco
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24, width: 1),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Título com sombra
-                            Text(
-                              'Bem-vindo',
-                              style: TextStyle(
-                                fontSize: 34,
-                                fontWeight: FontWeight.bold,
-                                color: trackerYellow,
-                                shadows: [
-                                  Shadow(
-                                    blurRadius: 10,
-                                    color: Colors.black.withOpacity(0.4),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 28),
-                            // Campo E-mail com preenchimento
-                            TextField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              textInputAction: TextInputAction.next,
-                              autofillHints: const [AutofillHints.username],
-                              onSubmitted: (_) => FocusScope.of(context)
-                                  .requestFocus(_passwordFocusNode),
-                              style: const TextStyle(color: Colors.black87),
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.9),
-                                labelText: 'E-mail',
-                                prefixIcon: const Icon(Icons.email_outlined),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            // Campo Senha com preenchimento
-                            TextField(
-                              controller: _passwordController,
-                              focusNode: _passwordFocusNode,
-                              obscureText: _obscurePassword,
-                              textInputAction: TextInputAction.done,
-                              autofillHints: const [AutofillHints.password],
-                              onSubmitted: (_) {
-                                if (!_isLoading) {
-                                  _login();
-                                }
-                              },
-                              style: const TextStyle(color: Colors.black87),
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.9),
-                                labelText: 'Senha',
-                                prefixIcon: const Icon(Icons.lock_outline),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  },
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 28),
-                            // Botão Entrar
-                            ElevatedButton(
-                              onPressed: _isLoading ? null : _login,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: trackerBlue,
-                                minimumSize: const Size(double.infinity, 50),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 5,
-                              ),
-                              child: _isLoading
-                                  ? const CircularProgressIndicator(
-                                      color: Colors.white,
-                                    )
-                                  : const Text(
-                                      'Entrar',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+          // Efeito de vidro fosco
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              color: Colors.black.withOpacity(0.10),
             ),
           ),
-
-          // 🖋️ Assinatura fixa (Posicionado no Stack)
-          const Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.code, color: Colors.white70, size: 18),
-                SizedBox(width: 6),
-                Text(
-                  'Desenvolvido por theusdev',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =====================================================
-// 🏠 HOME SCREEN (do Código 2, com tema visual do Cód. 1)
-// =====================================================
-
-class HomeScreen extends StatelessWidget {
-  final Map<String, dynamic> userData;
-  final String authToken;
-
-  const HomeScreen({
-    super.key,
-    required this.userData,
-    required this.authToken,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final String userName = userData['name'] ?? 'Usuário';
-    final String userRole = (userData['role'] ?? '').toString().toLowerCase();
-    final int userId = int.tryParse(userData['id'].toString()) ?? 0;
-
-    final List<Widget> actionButtons = [];
-
-    // 🔹 Botões do vendedor
-    if (userRole == 'seller' || userRole == 'vendedor') {
-      actionButtons.addAll([
-        ElevatedButton.icon(
-          icon: const Icon(Icons.add_circle_outline),
-          label: const Text('Novo Agendamento'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green.shade700,
-            minimumSize: const Size(double.infinity, 50),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CreateTicketScreen(
-                  requestedByUserId: userId,
-                  // CORREÇÃO APLICADA AQUI: Passando o authToken
-                  authToken: authToken,
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.list_alt),
-          label: const Text('Status dos Meus Agendamentos'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue.shade700,
-            minimumSize: const Size(double.infinity, 50),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SellerTicketListScreen(
-                    authToken: authToken, userId: userId),
-              ),
-            );
-          },
-        ),
-      ]);
-    }
-
-    // 🔧 Botão do técnico
-    if (userRole == 'tech' || userRole == 'técnico') {
-      actionButtons.add(
-        ElevatedButton.icon(
-          icon: const Icon(Icons.build_circle),
-          label: const Text('Meus Chamados (Técnico)'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: trackerBlue,
-            minimumSize: const Size(double.infinity, 50),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    TechDashboardScreen(techId: userId, authToken: authToken),
-              ),
-            );
-          },
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Painel Principal'),
-        backgroundColor: trackerBlue,
-        foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginPage()),
-                (route) => false,
-              );
-            },
-          ),
-        ],
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Fundo
-          Image.asset(
-            'assets/background.png',
-            fit: BoxFit.cover,
-            color: Colors.black.withOpacity(0.3),
-            colorBlendMode: BlendMode.darken,
-          ),
-          // Conteúdo central
+          // Conteúdo
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Text(
-                    'Bem-vindo(a), $userName!',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: trackerYellow,
-                      shadows: [
-                        // Adicionando sombra do Cód. 1 para realçar o texto
-                        Shadow(
-                          blurRadius: 5,
-                          color: Colors.black.withOpacity(0.5),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.92),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 8),
+                        const Text(
+                          'TrackerCarsat',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: trackerBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Acesse sua conta',
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          onSubmitted: (_) =>
+                              FocusScope.of(context).requestFocus(_passwordFocusNode),
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _passwordController,
+                          focusNode: _passwordFocusNode,
+                          obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _login(),
+                          decoration: InputDecoration(
+                            labelText: 'Senha',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _obscurePassword = !_obscurePassword),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: trackerBlue,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text('Entrar'),
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Cargo: ${userRole.toUpperCase()}',
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                  const SizedBox(height: 30),
-                  ...actionButtons,
-                  const SizedBox(height: 40),
-                  // 🖋️ Assinatura na home
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.code, color: Colors.white70, size: 18),
-                      SizedBox(width: 6),
-                      Text(
-                        'Desenvolvido por theusdev',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
           ),
