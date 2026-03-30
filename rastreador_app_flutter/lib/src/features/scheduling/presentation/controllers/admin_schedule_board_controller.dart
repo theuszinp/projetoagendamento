@@ -32,7 +32,13 @@ class AdminScheduleBoardController extends ChangeNotifier {
       ]);
 
       schedules = results[0] as List<InstallationSchedule>;
-      technicians = results[1] as List<AppUser>;
+      final fetchedTechnicians = results[1] as List<AppUser>;
+      final uniqueTechnicians = <int, AppUser>{};
+      for (final technician in fetchedTechnicians) {
+        uniqueTechnicians[technician.id] = technician;
+      }
+      technicians = uniqueTechnicians.values.toList()
+        ..sort((left, right) => left.name.compareTo(right.name));
     } catch (error) {
       errorMessage = resolveErrorMessage(error);
     } finally {

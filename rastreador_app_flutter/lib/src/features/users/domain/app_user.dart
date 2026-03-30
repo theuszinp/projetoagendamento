@@ -42,4 +42,16 @@ class AppUser {
 
     return int.tryParse(value.toString()) ?? 0;
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+
+    return other is AppUser && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }

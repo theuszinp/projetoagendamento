@@ -140,7 +140,10 @@ class _AdminScheduleBoardView extends StatelessWidget {
     AdminScheduleBoardController controller,
     InstallationSchedule schedule,
   ) async {
-    AppUser? selected = schedule.installer;
+    AppUser? selected = _matchTechnician(
+      controller.technicians,
+      schedule.installer?.id,
+    );
 
     await showModalBottomSheet<void>(
       context: context,
@@ -192,5 +195,19 @@ class _AdminScheduleBoardView extends StatelessWidget {
         );
       },
     );
+  }
+
+  AppUser? _matchTechnician(List<AppUser> technicians, int? technicianId) {
+    if (technicianId == null) {
+      return null;
+    }
+
+    for (final technician in technicians) {
+      if (technician.id == technicianId) {
+        return technician;
+      }
+    }
+
+    return null;
   }
 }
