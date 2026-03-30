@@ -1,0 +1,17 @@
+enum AppPermission {
+  createSchedule,
+  viewOwnSchedules,
+  viewOwnScheduleHistory,
+  approveSchedule,
+  rejectSchedule,
+  reassignSchedule,
+  editAnySchedule,
+  viewAllSchedules,
+  manageUsers,
+  viewReports,
+  viewAssignedSchedules,
+  updateTechnicalStatus,
+  requestReschedule,
+  uploadTechnicalEvidence,
+  addInternalNotes,
+}
