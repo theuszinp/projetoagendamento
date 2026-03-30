@@ -77,7 +77,11 @@ class AdminDashboardScreen extends StatelessWidget {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.35,
+                childAspectRatio: MediaQuery.of(context).size.width > 1100
+                    ? 1.35
+                    : MediaQuery.of(context).size.width > 700
+                        ? 1.18
+                        : 1.02,
                 children: [
                   MetricCard(
                     label: 'Pendentes',

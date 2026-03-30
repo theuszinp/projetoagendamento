@@ -105,15 +105,22 @@ class _AdminScheduleBoardView extends StatelessWidget {
                             controller,
                             schedule,
                           ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.brand,
+                            side: const BorderSide(
+                              color: AppColors.brand,
+                              width: 1.4,
+                            ),
+                          ),
                           child: Text(
                             schedule.installer == null ? 'Atribuir' : 'Reatribuir',
                           ),
                         ),
-                        FilledButton.tonal(
+                        FilledButton(
                           onPressed: () => controller.reject(schedule.id),
                           style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.danger.withValues(alpha: 0.12),
-                            foregroundColor: AppColors.danger,
+                            backgroundColor: AppColors.danger,
+                            foregroundColor: Colors.white,
                           ),
                           child: const Text('Reprovar'),
                         ),

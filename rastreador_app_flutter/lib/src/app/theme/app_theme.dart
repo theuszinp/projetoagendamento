@@ -52,7 +52,7 @@ ThemeData buildAppTheme() {
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: AppColors.brand.withValues(alpha: 0.08)),
+        side: BorderSide(color: AppColors.brand.withValues(alpha: 0.10)),
       ),
     ),
     snackBarTheme: SnackBarThemeData(
@@ -63,17 +63,28 @@ ThemeData buildAppTheme() {
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      hintStyle: GoogleFonts.poppins(color: AppColors.textMuted),
+      prefixIconColor: AppColors.brand,
+      suffixIconColor: AppColors.brand,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: AppColors.textMuted.withValues(alpha: 0.2)),
+        borderSide: BorderSide(color: AppColors.brand.withValues(alpha: 0.18)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: AppColors.textMuted.withValues(alpha: 0.2)),
+        borderSide: BorderSide(color: AppColors.brand.withValues(alpha: 0.18)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: AppColors.brand, width: 1.5),
+        borderSide: const BorderSide(color: AppColors.brand, width: 1.7),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: const BorderSide(color: AppColors.danger, width: 1.7),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: AppColors.danger.withValues(alpha: 0.8)),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
@@ -108,9 +119,12 @@ ThemeData buildAppTheme() {
     ),
     chipTheme: base.chipTheme.copyWith(
       backgroundColor: Colors.white,
-      selectedColor: AppColors.accent.withValues(alpha: 0.22),
+      selectedColor: AppColors.brand,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-      labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+      labelStyle: GoogleFonts.poppins(
+        fontWeight: FontWeight.w700,
+        color: AppColors.brand,
+      ),
     ),
   );
 }
