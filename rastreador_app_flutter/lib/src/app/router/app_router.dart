@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/session/app_session_controller.dart';
 import '../../features/scheduling/domain/installation_schedule.dart';
 import '../../features/scheduling/presentation/screens/admin_dashboard_screen.dart';
+import '../../features/reports/presentation/screens/admin_reports_screen.dart';
 import '../../features/scheduling/presentation/screens/admin_schedule_board_screen.dart';
 import '../../features/scheduling/presentation/screens/new_schedule_screen.dart';
 import '../../features/scheduling/presentation/screens/schedule_details_screen.dart';
@@ -171,6 +172,7 @@ class _RoleShellScaffoldState extends State<RoleShellScaffold> {
           pages: const [
             AdminDashboardScreen(),
             AdminScheduleBoardScreen(),
+            AdminReportsScreen(),
             UserManagementScreen(),
             AccountScreen(),
           ],
@@ -184,6 +186,11 @@ class _RoleShellScaffoldState extends State<RoleShellScaffold> {
               icon: Icon(Icons.calendar_month_outlined),
               selectedIcon: Icon(Icons.calendar_month),
               label: 'Agenda',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.analytics_outlined),
+              selectedIcon: Icon(Icons.analytics),
+              label: 'Relatórios',
             ),
             NavigationDestination(
               icon: Icon(Icons.manage_accounts_outlined),

@@ -12,6 +12,7 @@ import '../../../users/domain/user_role.dart';
 import '../../data/schedule_repository.dart';
 import '../../domain/installation_schedule.dart';
 import '../../domain/schedule_history_bundle.dart';
+import '../widgets/schedule_attachments_card.dart';
 import '../widgets/schedule_notes_card.dart';
 import '../widgets/schedule_timeline_card.dart';
 
@@ -47,7 +48,11 @@ class _ScheduleDetailsScreenState extends State<ScheduleDetailsScreen> {
     final schedule = await _resolveSchedule();
     if (schedule == null) {
       return const _ScheduleDetailsData(
-        history: ScheduleHistoryBundle(timeline: [], notes: []),
+        history: ScheduleHistoryBundle(
+          timeline: [],
+          notes: [],
+          attachments: [],
+        ),
       );
     }
 
@@ -59,7 +64,11 @@ class _ScheduleDetailsScreenState extends State<ScheduleDetailsScreen> {
     } catch (error) {
       return _ScheduleDetailsData(
         schedule: schedule,
-        history: const ScheduleHistoryBundle(timeline: [], notes: []),
+        history: const ScheduleHistoryBundle(
+          timeline: [],
+          notes: [],
+          attachments: [],
+        ),
         historyError: resolveErrorMessage(error),
       );
     }
@@ -195,6 +204,7 @@ class _ScheduleDetailsScreenState extends State<ScheduleDetailsScreen> {
               ? data!.history.timeline
               : item.timeline;
           final notes = data?.history.notes ?? const [];
+          final attachments = data?.history.attachments ?? const [];
 
           return ListView(
             padding: const EdgeInsets.all(20),
@@ -281,6 +291,8 @@ class _ScheduleDetailsScreenState extends State<ScheduleDetailsScreen> {
                     ),
                   ),
                 ScheduleTimelineCard(items: timeline),
+                const SizedBox(height: 16),
+                ScheduleAttachmentsCard(attachments: attachments),
                 const SizedBox(height: 16),
                 ScheduleNotesCard(
                   notes: notes,

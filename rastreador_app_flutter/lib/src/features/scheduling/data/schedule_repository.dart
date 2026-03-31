@@ -1,3 +1,4 @@
+import '../../../core/network/api_client.dart';
 import '../../../core/utils/date_time_formatter.dart';
 import '../../../core/utils/schedule_description_codec.dart';
 import '../../users/domain/app_user.dart';
@@ -6,12 +7,12 @@ import '../domain/address.dart';
 import '../domain/create_schedule_input.dart';
 import '../domain/customer.dart';
 import '../domain/installation_schedule.dart';
+import '../domain/schedule_attachment.dart';
 import '../domain/schedule_history_bundle.dart';
 import '../domain/schedule_note.dart';
 import '../domain/schedule_priority.dart';
 import '../domain/schedule_status.dart';
 import '../domain/schedule_timeline_entry.dart';
-import '../../../core/network/api_client.dart';
 
 class ScheduleRepository {
   ScheduleRepository(this._apiClient);
@@ -101,6 +102,7 @@ class ScheduleRepository {
       final response = await _apiClient.getJson('/schedules/$scheduleId/history');
       final history = (response['history'] as List?) ?? const [];
       final notes = (response['notes'] as List?) ?? const [];
+      final attachments = (response['attachments'] as List?) ?? const [];
 
       return ScheduleHistoryBundle(
         timeline: history
@@ -113,10 +115,20 @@ class ScheduleRepository {
               (item) => _mapScheduleNote((item as Map).cast<String, dynamic>()),
             )
             .toList(),
+        attachments: attachments
+            .map(
+              (item) =>
+                  _mapScheduleAttachment((item as Map).cast<String, dynamic>()),
+            )
+            .toList(),
       );
     } on ApiException catch (error) {
       if (error.isNotFound) {
-        return const ScheduleHistoryBundle(timeline: [], notes: []);
+        return const ScheduleHistoryBundle(
+          timeline: [],
+          notes: [],
+          attachments: [],
+        );
       }
       rethrow;
     }
@@ -146,6 +158,38 @@ class ScheduleRepository {
     }
   }
 
+  Future<ScheduleAttachment> uploadScheduleAttachment({
+    required int scheduleId,
+    required String fileName,
+    required String contentType,
+    required String base64Content,
+  }) async {
+    try {
+      final response = await _apiClient.postJson(
+        '/schedules/$scheduleId/attachments',
+        body: <String, dynamic>{
+          'file_name': fileName,
+          'content_type': contentType,
+          'base64_content': base64Content,
+        },
+      );
+      final attachment = response['attachment'];
+      if (attachment is! Map) {
+        throw ApiException('Resposta inválida ao enviar foto.');
+      }
+
+      return _mapScheduleAttachment(attachment.cast<String, dynamic>());
+    } on ApiException catch (error) {
+      if (error.isNotFound) {
+        throw ApiException(
+          'Seu backend atual ainda não suporta anexos de instalação. Atualize a API primeiro.',
+          error.statusCode,
+        );
+      }
+      rethrow;
+    }
+  }
+
   Future<void> _updateTechnicalStatus(int scheduleId, String status) async {
     await _apiClient.putJson(
       '/tickets/$scheduleId/tech-status',
@@ -157,8 +201,9 @@ class ScheduleRepository {
     final nextStatus = (json['next_status'] ?? '').toString();
     final note = (json['note'] ?? '').toString().trim();
     final actorName = (json['actor_name'] ?? '').toString().trim();
-    final createdAt = DateTime.tryParse((json['created_at'] ?? '').toString()) ??
-        DateTime.now();
+    final createdAt =
+        DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+            DateTime.now();
 
     String label;
     if (nextStatus.startsWith('NOTE:')) {
@@ -193,6 +238,9 @@ class ScheduleRepository {
         case 'COMPLETED':
           label = 'Concluído';
           break;
+        case 'ATTACHMENT:PHOTO':
+          label = 'Foto anexada';
+          break;
         default:
           label = nextStatus.isEmpty ? 'Atualização' : nextStatus;
       }
@@ -222,6 +270,20 @@ class ScheduleRepository {
     );
   }
 
+  ScheduleAttachment _mapScheduleAttachment(Map<String, dynamic> json) {
+    final uploadedByName = (json['uploaded_by_name'] ?? '').toString().trim();
+
+    return ScheduleAttachment(
+      id: int.tryParse((json['id'] ?? '').toString()) ?? 0,
+      url: (json['url'] ?? '').toString(),
+      fileName: (json['file_name'] ?? 'foto-instalacao.jpg').toString(),
+      contentType: (json['content_type'] ?? 'image/jpeg').toString(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+          DateTime.now(),
+      uploadedByName: uploadedByName.isEmpty ? null : uploadedByName,
+    );
+  }
+
   List<InstallationSchedule> _mapSchedules(List<dynamic> rawList) {
     return rawList
         .map(
@@ -233,9 +295,11 @@ class ScheduleRepository {
   InstallationSchedule _mapSchedule(Map<String, dynamic> json) {
     final description = (json['description'] ?? '').toString();
     final metadata = ScheduleDescriptionCodec.decode(description);
-    final createdAt = DateTime.tryParse((json['created_at'] ?? '').toString()) ??
-        DateTime.now();
-    final approvedAt = DateTime.tryParse((json['approved_at'] ?? '').toString());
+    final createdAt =
+        DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+            DateTime.now();
+    final approvedAt =
+        DateTime.tryParse((json['approved_at'] ?? '').toString());
     final startedAt = DateTime.tryParse((json['started_at'] ?? '').toString());
     final completedAt =
         DateTime.tryParse((json['completed_at'] ?? '').toString());
@@ -245,10 +309,9 @@ class ScheduleRepository {
     );
 
     final installerId = int.tryParse((json['assigned_to'] ?? '').toString());
-    final installerName = (json['assigned_to_name'] ??
-            json['approved_by_admin_name'] ??
-            '')
-        .toString();
+    final installerName =
+        (json['assigned_to_name'] ?? json['approved_by_admin_name'] ?? '')
+            .toString();
 
     return InstallationSchedule(
       id: int.tryParse((json['id'] ?? '').toString()) ?? 0,
@@ -262,7 +325,8 @@ class ScheduleRepository {
         phone: metadata.contactPhone ?? 'Não informado',
       ),
       address: Address(
-        fullText: (json['customer_address'] ?? 'Endereço não informado').toString(),
+        fullText:
+            (json['customer_address'] ?? 'Endereço não informado').toString(),
       ),
       createdAt: createdAt,
       desiredDate: DateTime.tryParse(metadata.desiredDateLabel ?? ''),

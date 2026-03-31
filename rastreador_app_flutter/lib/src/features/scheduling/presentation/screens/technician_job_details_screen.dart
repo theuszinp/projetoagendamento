@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/maps/map_launcher_service.dart';
+import '../../../../core/media/installation_photo_picker_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/app_session_controller.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -12,6 +14,7 @@ import '../../data/schedule_repository.dart';
 import '../../domain/installation_schedule.dart';
 import '../../domain/schedule_history_bundle.dart';
 import '../../domain/schedule_status.dart';
+import '../widgets/schedule_attachments_card.dart';
 import '../widgets/schedule_notes_card.dart';
 import '../widgets/schedule_timeline_card.dart';
 
@@ -31,9 +34,13 @@ class TechnicianJobDetailsScreen extends StatefulWidget {
 }
 
 class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen> {
+  final InstallationPhotoPickerService _photoPicker =
+      InstallationPhotoPickerService();
+
   late Future<_TechnicianJobDetailsData> _detailsFuture;
   InstallationSchedule? _schedule;
   bool _isProcessing = false;
+  bool _isUploadingAttachment = false;
 
   @override
   void initState() {
@@ -47,7 +54,11 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
     final schedule = await _resolveSchedule();
     if (schedule == null) {
       return const _TechnicianJobDetailsData(
-        history: ScheduleHistoryBundle(timeline: [], notes: []),
+        history: ScheduleHistoryBundle(
+          timeline: [],
+          notes: [],
+          attachments: [],
+        ),
       );
     }
 
@@ -59,10 +70,20 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
     } catch (error) {
       return _TechnicianJobDetailsData(
         schedule: schedule,
-        history: const ScheduleHistoryBundle(timeline: [], notes: []),
+        history: const ScheduleHistoryBundle(
+          timeline: [],
+          notes: [],
+          attachments: [],
+        ),
         historyError: resolveErrorMessage(error),
       );
     }
+  }
+
+  Future<void> _refreshDetails() async {
+    setState(() {
+      _detailsFuture = _loadDetails();
+    });
   }
 
   Future<InstallationSchedule?> _resolveSchedule() async {
@@ -116,7 +137,11 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
         return;
       }
 
-      setState(() => _detailsFuture = _loadDetails());
+      await _refreshDetails();
+      if (!mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Observação técnica registrada.'),
@@ -150,13 +175,17 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
         return;
       }
 
+      await _refreshDetails();
+      if (!mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Atendimento iniciado com sucesso.'),
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) {
         return;
@@ -188,13 +217,19 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
         return;
       }
 
+      await _refreshDetails();
+      if (!mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Instalação concluída com sucesso.'),
+          content: Text(
+            'Instalação concluída. Admin e vendedor já podem ver a conclusão.',
+          ),
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) {
         return;
@@ -209,6 +244,60 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
     } finally {
       if (mounted) {
         setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  Future<void> _uploadPhoto(ImageSource source) async {
+    final schedule = _schedule;
+    final repository = context.read<ScheduleRepository>();
+    if (schedule == null) {
+      return;
+    }
+
+    setState(() => _isUploadingAttachment = true);
+
+    try {
+      final payload = await _photoPicker.pick(source);
+      if (payload == null) {
+        return;
+      }
+
+      await repository.uploadScheduleAttachment(
+            scheduleId: schedule.id,
+            fileName: payload.fileName,
+            contentType: payload.contentType,
+            base64Content: payload.base64Content,
+          );
+      if (!mounted) {
+        return;
+      }
+
+      await _refreshDetails();
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Foto anexada com sucesso.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(resolveErrorMessage(error)),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingAttachment = false);
       }
     }
   }
@@ -242,7 +331,7 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
         title: Text(_schedule?.protocol ?? 'Detalhes do serviço'),
         actions: [
           SessionAppBarActions(
-            onRefresh: () async => setState(() => _detailsFuture = _loadDetails()),
+            onRefresh: _refreshDetails,
           ),
         ],
       ),
@@ -275,6 +364,10 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
               ? data!.history.timeline
               : item.timeline;
           final notes = data?.history.notes ?? const [];
+          final attachments = data?.history.attachments ?? const [];
+          final canUploadPhotos =
+              item.status == ScheduleStatus.inService ||
+              item.status == ScheduleStatus.completed;
 
           return ListView(
             padding: const EdgeInsets.all(20),
@@ -326,6 +419,15 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
                 onOpenMap: _openOnMap,
                 onStart: _startService,
                 onComplete: _completeService,
+              ),
+              const SizedBox(height: 16),
+              ScheduleAttachmentsCard(
+                attachments: attachments,
+                isUploading: _isUploadingAttachment,
+                onUploadFromCamera:
+                    canUploadPhotos ? () => _uploadPhoto(ImageSource.camera) : null,
+                onUploadFromGallery:
+                    canUploadPhotos ? () => _uploadPhoto(ImageSource.gallery) : null,
               ),
               const SizedBox(height: 16),
               if (snapshot.connectionState == ConnectionState.waiting)
@@ -428,7 +530,7 @@ class _ActionPanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'A timeline abaixo agora vem do histórico real salvo no banco.',
+              'Depois de iniciar o atendimento, registre as fotos da instalação e conclua o serviço por aqui.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
