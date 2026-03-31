@@ -14,6 +14,18 @@ async function updatePassword(req, res) {
     });
 }
 
+async function updateDeviceToken(req, res) {
+    await usersService.updateDeviceToken({
+        requester: req.user,
+        fcmToken: req.body.fcm_token,
+    });
+
+    res.json({
+        success: true,
+        message: 'Token do dispositivo atualizado com sucesso.',
+    });
+}
+
 async function listUsers(req, res) {
     const users = await usersService.listUsers();
     res.json({
@@ -31,6 +43,7 @@ async function listTechnicians(req, res) {
 }
 
 module.exports = {
+    updateDeviceToken,
     updatePassword,
     listUsers,
     listTechnicians,

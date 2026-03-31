@@ -148,6 +148,11 @@ CREATE TABLE IF NOT EXISTS ticket_attachments (
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE ticket_attachments ADD COLUMN IF NOT EXISTS storage_path TEXT;
+ALTER TABLE ticket_attachments ADD COLUMN IF NOT EXISTS file_name VARCHAR(255);
+ALTER TABLE ticket_attachments ADD COLUMN IF NOT EXISTS content_type VARCHAR(100);
+ALTER TABLE ticket_attachments ADD COLUMN IF NOT EXISTS uploaded_by INTEGER;
+
 CREATE TABLE IF NOT EXISTS ticket_status_history (
     id SERIAL PRIMARY KEY,
     ticket_id INTEGER NOT NULL,
@@ -249,6 +254,17 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_ticket_attachments_uploaded_by'
+    ) THEN
+        ALTER TABLE ticket_attachments
+        ADD CONSTRAINT fk_ticket_attachments_uploaded_by
+        FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
         SELECT 1 FROM pg_constraint WHERE conname = 'fk_ticket_status_history_ticket_id'
     ) THEN
         ALTER TABLE ticket_status_history
@@ -299,6 +315,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_tech_status ON tickets(tech_status);
 CREATE INDEX IF NOT EXISTS idx_tickets_customer_id ON tickets(customer_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_attachments_ticket_id ON ticket_attachments(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_attachments_uploaded_by ON ticket_attachments(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_ticket_status_history_ticket_id ON ticket_status_history(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_notes_ticket_id ON ticket_notes(ticket_id);
 

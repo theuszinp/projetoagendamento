@@ -11,7 +11,9 @@ router.get('/', authenticate, authorizeRoles(ROLES.ADMIN), asyncHandler(schedule
 router.get('/requested/:requested_by_id', authenticate, asyncHandler(schedulesController.listByRequester));
 router.get('/assigned/:tech_id', authenticate, asyncHandler(schedulesController.listByTechnician));
 router.get('/:id/history', authenticate, asyncHandler(schedulesController.history));
+router.get('/:id/attachments', authenticate, asyncHandler(schedulesController.listAttachments));
 router.get('/:id/notes', authenticate, asyncHandler(schedulesController.listNotes));
+router.post('/:id/attachments', authenticate, asyncHandler(schedulesController.createAttachment));
 router.post('/:id/notes', authenticate, asyncHandler(schedulesController.createNote));
 router.get('/:id', authenticate, asyncHandler(schedulesController.getById));
 router.put('/:id/approve', authenticate, authorizeRoles(ROLES.ADMIN), asyncHandler(schedulesController.approve));

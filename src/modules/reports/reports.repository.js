@@ -38,6 +38,61 @@ async function listTechSummary({ from, to }) {
     return result.rows;
 }
 
+async function listCompletedServices({ from, to, search }) {
+    const normalizedSearch = (search || '').trim();
+
+    const result = await pool.query(
+        `
+        SELECT
+            t.id AS ticket_id,
+            t.title,
+            t.customer_name,
+            t.customer_address,
+            t.priority,
+            t.status,
+            t.tech_status,
+            t.created_at,
+            t.started_at,
+            t.completed_at,
+            t.requested_by AS seller_id,
+            seller.name AS seller_name,
+            t.assigned_to AS tech_id,
+            tech.name AS tech_name,
+            COUNT(a.id) AS attachments_count,
+            CASE
+                WHEN t.started_at IS NOT NULL AND t.completed_at IS NOT NULL
+                    THEN ROUND((EXTRACT(EPOCH FROM (t.completed_at - t.started_at)) / 60.0)::numeric, 2)
+                ELSE NULL
+            END AS duration_min
+        FROM tickets t
+        LEFT JOIN users seller ON seller.id = t.requested_by
+        LEFT JOIN users tech ON tech.id = t.assigned_to
+        LEFT JOIN ticket_attachments a ON a.ticket_id = t.id
+        WHERE t.tech_status = 'COMPLETED'
+          AND t.completed_at IS NOT NULL
+          AND t.completed_at >= $1::timestamp
+          AND t.completed_at < ($2::timestamp + interval '1 day')
+          AND (
+                $3::text = ''
+                OR COALESCE(t.title, '') ILIKE '%' || $3 || '%'
+                OR COALESCE(t.customer_name, '') ILIKE '%' || $3 || '%'
+                OR COALESCE(t.customer_address, '') ILIKE '%' || $3 || '%'
+                OR COALESCE(seller.name, '') ILIKE '%' || $3 || '%'
+                OR COALESCE(tech.name, '') ILIKE '%' || $3 || '%'
+              )
+        GROUP BY
+            t.id,
+            seller.name,
+            tech.name
+        ORDER BY t.completed_at DESC, t.id DESC
+        `,
+        [from, to, normalizedSearch]
+    );
+
+    return result.rows;
+}
+
 module.exports = {
     listTechSummary,
+    listCompletedServices,
 };

@@ -63,6 +63,35 @@ async function ensureDatabase() {
         );
     `);
 
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS ticket_attachments (
+            id SERIAL PRIMARY KEY,
+            ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+    `);
+
+    await pool.query(`
+        ALTER TABLE ticket_attachments
+        ADD COLUMN IF NOT EXISTS storage_path TEXT NULL;
+    `);
+
+    await pool.query(`
+        ALTER TABLE ticket_attachments
+        ADD COLUMN IF NOT EXISTS file_name VARCHAR(255) NULL;
+    `);
+
+    await pool.query(`
+        ALTER TABLE ticket_attachments
+        ADD COLUMN IF NOT EXISTS content_type VARCHAR(100) NULL;
+    `);
+
+    await pool.query(`
+        ALTER TABLE ticket_attachments
+        ADD COLUMN IF NOT EXISTS uploaded_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL;
+    `);
+
     const indexes = [
         'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);',
         'CREATE INDEX IF NOT EXISTS idx_tickets_assigned_to ON tickets(assigned_to);',
@@ -71,6 +100,8 @@ async function ensureDatabase() {
         'CREATE INDEX IF NOT EXISTS idx_tickets_tech_status ON tickets(tech_status);',
         'CREATE INDEX IF NOT EXISTS idx_ticket_status_history_ticket_id ON ticket_status_history(ticket_id);',
         'CREATE INDEX IF NOT EXISTS idx_ticket_notes_ticket_id ON ticket_notes(ticket_id);',
+        'CREATE INDEX IF NOT EXISTS idx_ticket_attachments_ticket_id ON ticket_attachments(ticket_id);',
+        'CREATE INDEX IF NOT EXISTS idx_ticket_attachments_uploaded_by ON ticket_attachments(uploaded_by);',
     ];
 
     for (const statement of indexes) {

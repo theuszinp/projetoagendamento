@@ -8,4 +8,12 @@ async function techSummary(req, res) {
     });
 }
 
-module.exports = { techSummary };
+async function completedServices(req, res) {
+    const result = await reportsService.completedServices(req.query);
+    res.json({
+        success: true,
+        ...result,
+    });
+}
+
+module.exports = { techSummary, completedServices };

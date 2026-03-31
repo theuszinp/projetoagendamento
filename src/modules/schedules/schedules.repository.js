@@ -139,7 +139,7 @@ async function findTicketById(ticketId) {
 
 async function findTechnicianById(db, technicianId) {
     const result = await db.query(
-        'SELECT id, name FROM users WHERE id = $1 AND role = $2',
+        'SELECT id, name, email, fcm_token FROM users WHERE id = $1 AND role = $2',
         [technicianId, 'tech']
     );
 
@@ -256,6 +256,25 @@ async function insertTicketNote(db, payload) {
     return result.rows[0];
 }
 
+async function insertTicketAttachment(db, payload) {
+    const result = await db.query(
+        `INSERT INTO ticket_attachments
+         (ticket_id, url, storage_path, file_name, content_type, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+            payload.ticketId,
+            payload.url,
+            payload.storagePath,
+            payload.fileName,
+            payload.contentType,
+            payload.uploadedBy,
+        ]
+    );
+
+    return result.rows[0];
+}
+
 async function listTicketNotes(ticketId) {
     const result = await pool.query(
         `SELECT
@@ -266,6 +285,37 @@ async function listTicketNotes(ticketId) {
          WHERE n.ticket_id = $1
          ORDER BY n.created_at ASC`,
         [ticketId]
+    );
+
+    return result.rows;
+}
+
+async function listTicketAttachments(ticketId) {
+    const result = await pool.query(
+        `SELECT
+            a.*,
+            u.name AS uploaded_by_name
+         FROM ticket_attachments a
+         LEFT JOIN users u ON u.id = a.uploaded_by
+         WHERE a.ticket_id = $1
+         ORDER BY a.created_at ASC`,
+        [ticketId]
+    );
+
+    return result.rows;
+}
+
+async function listNotificationRecipientsByIds(userIds) {
+    const normalizedIds = [...new Set(userIds.filter(Boolean).map(Number))];
+    if (normalizedIds.length === 0) {
+        return [];
+    }
+
+    const result = await pool.query(
+        `SELECT id, name, email, role, fcm_token
+         FROM users
+         WHERE id = ANY($1::int[])`,
+        [normalizedIds]
     );
 
     return result.rows;
@@ -290,5 +340,8 @@ module.exports = {
     insertStatusHistory,
     listStatusHistory,
     insertTicketNote,
+    insertTicketAttachment,
     listTicketNotes,
+    listTicketAttachments,
+    listNotificationRecipientsByIds,
 };

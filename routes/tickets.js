@@ -275,7 +275,7 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
         await client.query('BEGIN');
 
         const techResCheck = await client.query(
-            'SELECT id FROM users WHERE id = $1 AND role = $2',
+            'SELECT id, name, fcm_token FROM users WHERE id = $1 AND role = $2',
             [numericAssignedTo, 'tech']
         );
         if (techResCheck.rows.length === 0) {
@@ -301,12 +301,39 @@ router.put('/:id/approve', authMiddleware, roleMiddleware('admin'), async (req, 
         }
 
         let notification_sent = false;
-        // Se você tem adminFirebase configurado -> enviar FCM aqui
-        // Exemplo (pseudo):
-        // if (adminFirebase && adminFirebase.messaging) {
-        //     // montar payload e enviar
-        //     notification_sent = true/false conforme resposta
-        // }
+        const technician = techResCheck.rows[0];
+
+        if (
+            technician?.fcm_token &&
+            adminFirebase &&
+            adminFirebase.apps &&
+            adminFirebase.apps.length > 0
+        ) {
+            try {
+                await adminFirebase.messaging().send({
+                    token: technician.fcm_token,
+                    notification: {
+                        title: 'Novo serviço atribuído',
+                        body: `${ticket.title} para ${ticket.customer_name}`,
+                    },
+                    data: {
+                        ticket_id: String(ticket.id),
+                        route: `/technician/jobs/${ticket.id}`,
+                        customer_name: String(ticket.customer_name || ''),
+                    },
+                    android: {
+                        priority: 'high',
+                        notification: {
+                            channelId: 'tracker_services',
+                            clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+                        },
+                    },
+                });
+                notification_sent = true;
+            } catch (pushError) {
+                console.error('Erro ao enviar push FCM:', pushError.message);
+            }
+        }
 
         await client.query('COMMIT');
         res.json({ success: true, ticket, notification_sent });

@@ -4,6 +4,33 @@ const pool = require('../db');
 const bcrypt = require('bcrypt');
 const { authMiddleware, roleMiddleware } = require('../middleware/auth'); // Importa middlewares
 
+router.put('/me/device-token', authMiddleware, async (req, res) => {
+    const { fcm_token } = req.body;
+
+    if (!fcm_token || fcm_token.trim().length < 20) {
+        return res.status(400).json({ success: false, message: 'Token do dispositivo inválido.' });
+    }
+
+    try {
+        await pool.query(
+            'UPDATE users SET fcm_token = $1, updated_at = NOW() WHERE id = $2',
+            [fcm_token.trim(), Number(req.user.id)]
+        );
+
+        return res.json({
+            success: true,
+            message: 'Token do dispositivo atualizado com sucesso.',
+        });
+    } catch (err) {
+        console.error('Erro ao atualizar token do dispositivo:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Erro interno ao atualizar token do dispositivo.',
+            details: err.message,
+        });
+    }
+});
+
 // 🔐 1️⃣ ROTA: ATUALIZAÇÃO DE SENHA (com bcrypt)
 router.put('/:id/password', authMiddleware, async (req, res) => {
     const userId = parseInt(req.params.id, 10);

@@ -12,5 +12,11 @@ router.get(
     authorizeRoles(ROLES.ADMIN),
     asyncHandler(reportsController.techSummary)
 );
+router.get(
+    '/completed-services',
+    authenticate,
+    authorizeRoles(ROLES.ADMIN),
+    asyncHandler(reportsController.completedServices)
+);
 
 module.exports = router;

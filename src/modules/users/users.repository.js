@@ -16,6 +16,13 @@ async function updatePasswordHash(userId, passwordHash) {
     );
 }
 
+async function updateDeviceToken({ userId, fcmToken }) {
+    await pool.query(
+        'UPDATE users SET fcm_token = $1, updated_at = NOW() WHERE id = $2',
+        [fcmToken, userId]
+    );
+}
+
 async function listUsers() {
     const result = await pool.query(
         'SELECT id, name, email, role, approved FROM users ORDER BY name ASC'
@@ -33,6 +40,7 @@ async function listTechnicians() {
 module.exports = {
     findUserPasswordHashById,
     updatePasswordHash,
+    updateDeviceToken,
     listUsers,
     listTechnicians,
 };

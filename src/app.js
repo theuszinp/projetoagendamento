@@ -13,7 +13,7 @@ function createApp() {
     const app = express();
 
     app.use(cors({ origin: '*' }));
-    app.use(express.json());
+    app.use(express.json({ limit: '15mb' }));
     app.use(morgan('combined'));
 
     app.get('/', (req, res) => {

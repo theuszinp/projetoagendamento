@@ -68,6 +68,10 @@ CREATE TABLE IF NOT EXISTS ticket_attachments (
     id SERIAL PRIMARY KEY,
     ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
     url TEXT NOT NULL,
+    storage_path TEXT NULL,
+    file_name VARCHAR(255) NULL,
+    content_type VARCHAR(100) NULL,
+    uploaded_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -101,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_tech_status ON tickets(tech_status);
 CREATE INDEX IF NOT EXISTS idx_tickets_customer_id ON tickets(customer_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_attachments_ticket_id ON ticket_attachments(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_attachments_uploaded_by ON ticket_attachments(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_ticket_status_history_ticket_id ON ticket_status_history(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_notes_ticket_id ON ticket_notes(ticket_id);
 

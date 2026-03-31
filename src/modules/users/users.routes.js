@@ -6,6 +6,7 @@ const usersController = require('./users.controller');
 
 const router = express.Router();
 
+router.put('/me/device-token', authenticate, asyncHandler(usersController.updateDeviceToken));
 router.put('/:id/password', authenticate, asyncHandler(usersController.updatePassword));
 router.get('/', authenticate, authorizeRoles(ROLES.ADMIN), asyncHandler(usersController.listUsers));
 router.get(

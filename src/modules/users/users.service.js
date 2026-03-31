@@ -3,6 +3,21 @@ const { AppError } = require('../../shared/errors/app-error');
 const { ROLES } = require('../../shared/constants/roles');
 const usersRepository = require('./users.repository');
 
+async function updateDeviceToken({ requester, fcmToken }) {
+    if (!requester?.id) {
+        throw new AppError('Usuário autenticado não encontrado.', 401);
+    }
+
+    if (!fcmToken || fcmToken.trim().length < 20) {
+        throw new AppError('Token do dispositivo inválido.', 400);
+    }
+
+    await usersRepository.updateDeviceToken({
+        userId: Number(requester.id),
+        fcmToken: fcmToken.trim(),
+    });
+}
+
 async function updatePassword({ requester, userId, oldPassword, newPassword }) {
     if (!Number.isInteger(userId) || userId <= 0) {
         throw new AppError('ID de usuário inválido.', 400);
@@ -48,6 +63,7 @@ async function listTechnicians() {
 }
 
 module.exports = {
+    updateDeviceToken,
     updatePassword,
     listUsers,
     listTechnicians,

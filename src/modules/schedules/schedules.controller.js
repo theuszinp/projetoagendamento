@@ -109,6 +109,18 @@ async function history(req, res) {
     });
 }
 
+async function listAttachments(req, res) {
+    const result = await schedulesService.listScheduleAttachments({
+        requester: req.user,
+        ticketId: req.params.id,
+    });
+
+    res.json({
+        success: true,
+        ...result,
+    });
+}
+
 async function listNotes(req, res) {
     const result = await schedulesService.listScheduleNotes({
         requester: req.user,
@@ -135,6 +147,21 @@ async function createNote(req, res) {
     });
 }
 
+async function createAttachment(req, res) {
+    const attachment = await schedulesService.addScheduleAttachment({
+        requester: req.user,
+        ticketId: req.params.id,
+        fileName: req.body.file_name,
+        contentType: req.body.content_type,
+        base64Content: req.body.base64_content,
+    });
+
+    res.status(201).json({
+        success: true,
+        attachment,
+    });
+}
+
 module.exports = {
     create,
     listAll,
@@ -145,6 +172,8 @@ module.exports = {
     reject,
     updateTechStatus,
     history,
+    listAttachments,
     listNotes,
+    createAttachment,
     createNote,
 };

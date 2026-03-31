@@ -10,6 +10,8 @@ const {
     isValidIdentifier,
 } = require('../../shared/utils/identifier');
 const schedulesRepository = require('./schedules.repository');
+const { sendPushNotification } = require('../../shared/integrations/push-notifier');
+const { uploadTicketAttachment } = require('../../shared/integrations/supabase-storage');
 
 function parsePositiveInteger(value, fieldName) {
     const parsedValue = Number(value);
@@ -251,9 +253,20 @@ async function approveSchedule({ requester, ticketId, assignedTo }) {
             note: `Ticket atribuído ao técnico ${technician.name}.`,
         });
 
+        const notificationSent = await sendPushNotification({
+            deviceToken: technician.fcm_token,
+            title: 'Novo serviço atribuído',
+            body: `${ticket.title} para ${ticket.customer_name}`,
+            data: {
+                ticket_id: ticket.id,
+                route: `/technician/jobs/${ticket.id}`,
+                customer_name: ticket.customer_name,
+            },
+        });
+
         return {
             ticket,
-            notification_sent: false,
+            notification_sent: notificationSent,
         };
     });
 }
@@ -340,6 +353,34 @@ async function updateTechnicalStatus({ requester, ticketId, newStatus }) {
             note: `Status técnico atualizado para ${newStatus}.`,
         });
 
+        if (newStatus === TECH_STATUS.COMPLETED) {
+            const recipients = await schedulesRepository.listNotificationRecipientsByIds([
+                currentTicket.requested_by,
+                currentTicket.approved_by,
+            ]);
+
+            await Promise.allSettled(
+                recipients
+                    .filter((recipient) => recipient.fcm_token)
+                    .map((recipient) =>
+                        sendPushNotification({
+                            deviceToken: recipient.fcm_token,
+                            title: 'Serviço concluído',
+                            body: `${updatedTicket.title} foi concluído para ${updatedTicket.customer_name}.`,
+                            data: {
+                                ticket_id: updatedTicket.id,
+                                route:
+                                    recipient.role === ROLES.ADMIN
+                                        ? `/admin/schedules/${updatedTicket.id}`
+                                        : `/seller/schedules/${updatedTicket.id}`,
+                                customer_name: updatedTicket.customer_name,
+                                status: newStatus,
+                            },
+                        })
+                    )
+            );
+        }
+
         return updatedTicket;
     });
 }
@@ -348,11 +389,13 @@ async function listScheduleHistory({ requester, ticketId }) {
     const ticket = await getScheduleById({ requester, ticketId });
     const history = await schedulesRepository.listStatusHistory(ticket.id);
     const notes = await schedulesRepository.listTicketNotes(ticket.id);
+    const attachments = await schedulesRepository.listTicketAttachments(ticket.id);
 
     return {
         ticket,
         history,
         notes,
+        attachments,
     };
 }
 
@@ -402,6 +445,79 @@ async function listScheduleNotes({ requester, ticketId }) {
     };
 }
 
+async function listScheduleAttachments({ requester, ticketId }) {
+    const ticket = await getScheduleById({ requester, ticketId });
+    const attachments = await schedulesRepository.listTicketAttachments(ticket.id);
+
+    return {
+        ticket,
+        attachments,
+    };
+}
+
+async function addScheduleAttachment({
+    requester,
+    ticketId,
+    fileName,
+    contentType,
+    base64Content,
+}) {
+    if (requester.role !== ROLES.TECH) {
+        throw new AppError('Apenas instaladores podem anexar fotos da instalação.', 403);
+    }
+
+    const parsedTicketId = parsePositiveInteger(ticketId, 'ticketId');
+
+    if (!base64Content || base64Content.trim().length < 50) {
+        throw new AppError('Conteúdo da foto inválido.', 400);
+    }
+
+    return schedulesRepository.withTransaction(async (db) => {
+        const currentTicket = await schedulesRepository.lockTicketById(db, parsedTicketId);
+        if (!currentTicket) {
+            throw new AppError('Ticket não encontrado.', 404);
+        }
+
+        if (Number(currentTicket.assigned_to) !== Number(requester.id)) {
+            throw new AppError('Você só pode anexar fotos dos serviços atribuídos a você.', 403);
+        }
+
+        if (
+            currentTicket.tech_status !== TECH_STATUS.IN_PROGRESS &&
+            currentTicket.tech_status !== TECH_STATUS.COMPLETED
+        ) {
+            throw new AppError('Inicie o atendimento antes de anexar fotos da instalação.', 409);
+        }
+
+        const upload = await uploadTicketAttachment({
+            ticketId: parsedTicketId,
+            fileName,
+            contentType,
+            base64Content: base64Content.trim(),
+        });
+
+        const attachment = await schedulesRepository.insertTicketAttachment(db, {
+            ticketId: parsedTicketId,
+            url: upload.publicUrl,
+            storagePath: upload.storagePath,
+            fileName: fileName || 'foto-instalacao.jpg',
+            contentType: contentType || 'image/jpeg',
+            uploadedBy: requester.id,
+        });
+
+        await schedulesRepository.insertStatusHistory(db, {
+            ticketId: parsedTicketId,
+            previousStatus: currentTicket.tech_status || currentTicket.status,
+            nextStatus: 'ATTACHMENT:PHOTO',
+            actorId: requester.id,
+            actorRole: requester.role,
+            note: `Foto anexada por ${requester.name || 'instalador'}.`,
+        });
+
+        return attachment;
+    });
+}
+
 module.exports = {
     createSchedule,
     listAllSchedules,
@@ -414,4 +530,6 @@ module.exports = {
     listScheduleHistory,
     addScheduleNote,
     listScheduleNotes,
+    listScheduleAttachments,
+    addScheduleAttachment,
 };
