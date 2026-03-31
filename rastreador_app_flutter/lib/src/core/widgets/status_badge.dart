@@ -25,18 +25,23 @@ class StatusBadge extends StatelessWidget {
       ScheduleStatus.technicalIssue => AppColors.danger,
     };
 
+    final textColor =
+        color == AppColors.warning ? AppColors.brandDark : color;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Text(
         status.label,
         style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w700,
+          color: textColor,
+          fontWeight: FontWeight.w800,
           fontSize: 12,
+          letterSpacing: 0.2,
         ),
       ),
     );

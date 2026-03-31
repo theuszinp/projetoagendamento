@@ -24,17 +24,39 @@ class MetricCard extends StatelessWidget {
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 150 || constraints.maxWidth < 170;
 
-        return Card(
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            gradient: LinearGradient(
+              colors: [
+                Colors.white,
+                color.withValues(alpha: 0.04),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
           child: Padding(
             padding: EdgeInsets.all(compact ? 14 : 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: compact ? 18 : 20,
-                  backgroundColor: color.withValues(alpha: 0.12),
-                  foregroundColor: color,
-                  child: Icon(icon, size: compact ? 18 : 20),
+                Container(
+                  width: compact ? 42 : 46,
+                  height: compact ? 42 : 46,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, size: compact ? 20 : 22, color: color),
                 ),
                 SizedBox(height: compact ? 12 : 18),
                 Text(
@@ -42,20 +64,19 @@ class MetricCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontSize: compact ? 22 : 24,
-                        height: 1,
+                        fontSize: compact ? 22 : 26,
                         color: AppColors.textPrimary,
                       ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Flexible(
                   child: Text(
                     label,
-                    maxLines: compact ? 2 : 1,
+                    maxLines: compact ? 2 : 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppColors.textMuted,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                   ),
                 ),

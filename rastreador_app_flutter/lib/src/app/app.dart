@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../core/session/app_session_controller.dart';
 import '../features/address/data/via_cep_repository.dart';
+import '../features/customers/data/customer_repository.dart';
+import '../features/reports/data/report_export_service.dart';
 import '../features/reports/data/report_repository.dart';
 import '../features/scheduling/data/schedule_repository.dart';
 import '../features/users/data/auth_repository.dart';
@@ -29,7 +31,13 @@ class MyApp extends StatelessWidget {
         Provider<AuthRepository>.value(value: dependencies.authRepository),
         Provider<UserRepository>.value(value: dependencies.userRepository),
         Provider<ViaCepRepository>.value(value: dependencies.viaCepRepository),
+        Provider<CustomerRepository>.value(
+          value: dependencies.customerRepository,
+        ),
         Provider<ReportRepository>.value(value: dependencies.reportRepository),
+        Provider<ReportExportService>.value(
+          value: dependencies.reportExportService,
+        ),
         Provider<ScheduleRepository>.value(value: dependencies.scheduleRepository),
         ChangeNotifierProvider<AppSessionController>.value(
           value: dependencies.sessionController,

@@ -77,14 +77,9 @@ class _ScheduleDetailsScreenState extends State<ScheduleDetailsScreen> {
   Future<InstallationSchedule?> _resolveSchedule() async {
     final repository = context.read<ScheduleRepository>();
     final session = context.read<AppSessionController>();
-
-    if (_schedule != null) {
-      return _schedule;
-    }
-
-    final scheduleId = widget.scheduleId;
+    final scheduleId = widget.scheduleId ?? _schedule?.id;
     if (scheduleId == null) {
-      return null;
+      return _schedule;
     }
 
     final fromDetails = await repository.fetchScheduleById(scheduleId);
@@ -95,15 +90,15 @@ class _ScheduleDetailsScreenState extends State<ScheduleDetailsScreen> {
     switch (session.role) {
       case UserRole.admin:
         final schedules = await repository.fetchAdminSchedules();
-        return _findById(schedules, scheduleId);
+        return _findById(schedules, scheduleId) ?? _schedule;
       case UserRole.seller:
         final schedules = await repository.fetchSellerSchedules(
           session.currentUserId,
         );
-        return _findById(schedules, scheduleId);
+        return _findById(schedules, scheduleId) ?? _schedule;
       case UserRole.technician:
       case UserRole.unknown:
-        return null;
+        return _schedule;
     }
   }
 

@@ -89,14 +89,9 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
   Future<InstallationSchedule?> _resolveSchedule() async {
     final repository = context.read<ScheduleRepository>();
     final technicianId = context.read<AppSessionController>().currentUserId;
-
-    if (_schedule != null) {
-      return _schedule;
-    }
-
-    final scheduleId = widget.scheduleId;
+    final scheduleId = widget.scheduleId ?? _schedule?.id;
     if (scheduleId == null) {
-      return null;
+      return _schedule;
     }
 
     final fromDetails = await repository.fetchScheduleById(scheduleId);
@@ -105,7 +100,7 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
     }
 
     final schedules = await repository.fetchTechnicianSchedules(technicianId);
-    return _findById(schedules, scheduleId);
+    return _findById(schedules, scheduleId) ?? _schedule;
   }
 
   InstallationSchedule? _findById(
@@ -424,10 +419,10 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
               ScheduleAttachmentsCard(
                 attachments: attachments,
                 isUploading: _isUploadingAttachment,
-                onUploadFromCamera:
-                    canUploadPhotos ? () => _uploadPhoto(ImageSource.camera) : null,
-                onUploadFromGallery:
-                    canUploadPhotos ? () => _uploadPhoto(ImageSource.gallery) : null,
+                showUploadActions: true,
+                uploadEnabled: canUploadPhotos,
+                onUploadFromCamera: () => _uploadPhoto(ImageSource.camera),
+                onUploadFromGallery: () => _uploadPhoto(ImageSource.gallery),
               ),
               const SizedBox(height: 16),
               if (snapshot.connectionState == ConnectionState.waiting)

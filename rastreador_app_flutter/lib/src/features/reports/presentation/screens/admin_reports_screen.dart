@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/app_colors.dart';
@@ -11,6 +12,7 @@ import '../../../../core/widgets/loading_view.dart';
 import '../../../../core/widgets/metric_card.dart';
 import '../../../../core/widgets/section_header.dart';
 import '../../../../core/widgets/session_app_bar_actions.dart';
+import '../../data/report_export_service.dart';
 import '../../data/report_repository.dart';
 import '../../domain/completed_services_report.dart';
 
@@ -27,6 +29,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
   late Future<CompletedServicesReport> _reportFuture;
   int _selectedRangeDays = 30;
   String _search = '';
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -75,11 +78,65 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
     });
   }
 
+  Future<void> _exportReport(CompletedServicesReport report) async {
+    if (_isExporting) {
+      return;
+    }
+
+    setState(() => _isExporting = true);
+
+    try {
+      final file = await context
+          .read<ReportExportService>()
+          .generateCompletedServicesWorkbook(report);
+
+      if (!mounted) {
+        return;
+      }
+
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'Relatorio de servicos concluidos',
+        text:
+            'Relatorio Tracker Carsat de ${DateTimeFormatter.shortDate(report.from)} ate ${DateTimeFormatter.shortDate(report.to)}.',
+        sharePositionOrigin:
+            box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Excel gerado em ${file.path}'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(resolveErrorMessage(error)),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Relatórios'),
+        title: const Text('Relatorios'),
         actions: [
           SessionAppBarActions(onRefresh: _refresh),
         ],
@@ -90,9 +147,9 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             const SectionHeader(
-              title: 'Serviços concluídos',
+              title: 'Servicos concluidos',
               subtitle:
-                  'Visão consolidada do que já foi executado, com tempo médio, fotos e responsáveis.',
+                  'Veja o que foi executado, com tempo medio, fotos e responsaveis, e exporte tudo para Excel.',
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -123,7 +180,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
               onSubmitted: (_) => _applySearch(),
               decoration: InputDecoration(
                 labelText:
-                    'Buscar por cliente, instalador, vendedor, endereço ou serviço',
+                    'Buscar por cliente, instalador, vendedor, endereco ou servico',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: IconButton(
                   onPressed: _applySearch,
@@ -138,13 +195,13 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const SizedBox(
                     height: 360,
-                    child: LoadingView(label: 'Montando relatório operacional...'),
+                    child: LoadingView(label: 'Montando relatorio operacional...'),
                   );
                 }
 
                 if (snapshot.hasError) {
                   return EmptyState(
-                    title: 'Erro ao carregar relatório',
+                    title: 'Erro ao carregar relatorio',
                     message: resolveErrorMessage(snapshot.error!),
                     icon: Icons.error_outline,
                   );
@@ -153,33 +210,64 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                 final report = snapshot.data;
                 if (report == null || report.items.isEmpty) {
                   return const EmptyState(
-                    title: 'Nenhum serviço concluído nesse filtro',
+                    title: 'Nenhum servico concluido nesse filtro',
                     message:
-                        'Ajuste o período ou a busca para localizar os atendimentos realizados.',
+                        'Ajuste o periodo ou a busca para localizar os atendimentos realizados.',
                   );
                 }
 
                 return Column(
                   children: [
-                    Card(
+                    Container(
+                      width: double.infinity,
                       margin: const EdgeInsets.only(bottom: 16),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.event_available,
-                              color: AppColors.brand,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Período: ${DateTimeFormatter.shortDate(report.from)} até ${DateTimeFormatter.shortDate(report.to)}',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: const LinearGradient(
+                          colors: [
+                            AppColors.brandDark,
+                            AppColors.brand,
+                            AppColors.brandLight,
                           ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Periodo ${DateTimeFormatter.shortDate(report.from)} ate ${DateTimeFormatter.shortDate(report.to)}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Exporte o relatorio completo em Excel para compartilhar com a operacao ou com a diretoria.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.84),
+                                ),
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton.tonalIcon(
+                            onPressed: _isExporting ? null : () => _exportReport(report),
+                            icon: _isExporting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.file_download_outlined),
+                            label: Text(
+                              _isExporting ? 'Gerando Excel...' : 'Baixar Excel',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     GridView.count(
@@ -193,7 +281,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                           MediaQuery.of(context).size.width > 1100 ? 1.35 : 1.05,
                       children: [
                         MetricCard(
-                          label: 'Serviços concluídos',
+                          label: 'Servicos concluidos',
                           value: '${report.summary.totalServices}',
                           icon: Icons.task_alt,
                         ),
@@ -209,7 +297,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                           icon: Icons.groups_outlined,
                         ),
                         MetricCard(
-                          label: 'Tempo médio',
+                          label: 'Tempo medio',
                           value: '${report.summary.averageMinutes.toStringAsFixed(0)} min',
                           icon: Icons.timelapse_outlined,
                           highlight: AppColors.danger,
@@ -291,7 +379,7 @@ class _CompletedServiceCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: const Text(
-                      'Concluído',
+                      'Concluido',
                       style: TextStyle(
                         color: AppColors.brand,
                         fontWeight: FontWeight.w700,
@@ -324,14 +412,14 @@ class _CompletedServiceCard extends StatelessWidget {
                   ),
                   _InfoPill(
                     icon: Icons.schedule,
-                    label: 'Duração',
+                    label: 'Duracao',
                     value: '${item.durationMinutes.toStringAsFixed(0)} min',
                   ),
                 ],
               ),
               const SizedBox(height: 12),
               Text(
-                'Concluído em ${DateTimeFormatter.shortDateTime(item.completedAt)}',
+                'Concluido em ${DateTimeFormatter.shortDateTime(item.completedAt)}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppColors.textMuted,
                     ),

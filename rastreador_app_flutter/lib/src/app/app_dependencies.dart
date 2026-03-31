@@ -3,6 +3,8 @@ import '../core/notifications/push_notification_service.dart';
 import '../core/session/app_session_controller.dart';
 import '../core/session/session_storage.dart';
 import '../features/address/data/via_cep_repository.dart';
+import '../features/customers/data/customer_repository.dart';
+import '../features/reports/data/report_export_service.dart';
 import '../features/reports/data/report_repository.dart';
 import '../features/scheduling/data/schedule_repository.dart';
 import '../features/users/data/auth_repository.dart';
@@ -22,7 +24,9 @@ class AppDependencies {
     authRepository = AuthRepository(apiClient, sessionStorage);
     userRepository = UserRepository(apiClient);
     scheduleRepository = ScheduleRepository(apiClient);
+    customerRepository = CustomerRepository(apiClient);
     reportRepository = ReportRepository(apiClient);
+    reportExportService = ReportExportService();
     viaCepRepository = ViaCepRepository();
     pushNotificationService = PushNotificationService(
       sessionController: sessionController,
@@ -52,7 +56,9 @@ class AppDependencies {
   late final AuthRepository authRepository;
   late final UserRepository userRepository;
   late final ScheduleRepository scheduleRepository;
+  late final CustomerRepository customerRepository;
   late final ReportRepository reportRepository;
+  late final ReportExportService reportExportService;
   late final ViaCepRepository viaCepRepository;
   late final PushNotificationService pushNotificationService;
 

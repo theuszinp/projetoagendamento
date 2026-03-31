@@ -67,6 +67,7 @@ class ScheduleRepository {
         'description': ScheduleDescriptionCodec.encode(input),
         'priority': input.priority.apiValue,
         'requestedBy': requesterId,
+        if (input.customer.id != null) 'clientId': input.customer.id,
         'customerName': input.customer.name,
         'address': input.address.fullText,
         'identifier': input.customer.document,

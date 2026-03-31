@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../app/theme/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/app_session_controller.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -34,7 +35,7 @@ class SellerDashboardScreen extends StatelessWidget {
 
           if (snapshot.hasError) {
             return EmptyState(
-              title: 'Não foi possível carregar o dashboard',
+              title: 'Nao foi possivel carregar o dashboard',
               message: resolveErrorMessage(snapshot.error!),
               icon: Icons.error_outline,
             );
@@ -54,10 +55,13 @@ class SellerDashboardScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              const _SellerHero(),
+              const SizedBox(height: 20),
               const SectionHeader(
-                title: 'Dashboard do vendedor',
+                eyebrow: 'PIPELINE COMERCIAL',
+                title: 'Visao do vendedor',
                 subtitle:
-                    'Cadastro rápido, visão do pipeline e retorno claro sobre aprovações.',
+                    'Acompanhe suas solicitacoes, veja o que esta pendente e mantenha o cadastro mais redondo para o admin aprovar mais rapido.',
               ),
               const SizedBox(height: 20),
               GridView.count(
@@ -66,42 +70,57 @@ class SellerDashboardScreen extends StatelessWidget {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.7,
+                childAspectRatio: 1.5,
                 children: [
                   MetricCard(
-                    label: 'Pendentes de aprovação',
+                    label: 'Pendentes de aprovacao',
                     value: pending.toString(),
-                    icon: Icons.pending_actions,
+                    icon: Icons.pending_actions_outlined,
+                    highlight: AppColors.warning,
                   ),
                   MetricCard(
                     label: 'Agendados',
                     value: scheduled.toString(),
-                    icon: Icons.event_available,
+                    icon: Icons.event_available_outlined,
                   ),
                   MetricCard(
-                    label: 'Concluídos',
+                    label: 'Concluidos',
                     value: completed.toString(),
-                    icon: Icons.task_alt,
+                    icon: Icons.task_alt_outlined,
+                    highlight: AppColors.success,
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-              Card(
+              const Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Boas práticas de operação',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      SectionHeader(
+                        title: 'Como acelerar a aprovacao',
+                        subtitle:
+                            'Pequenos ajustes no cadastro melhoram muito a velocidade da operacao.',
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '1. Cadastre dados completos do cliente e do veículo.\n'
-                        '2. Use observações objetivas para acelerar a aprovação.\n'
-                        '3. Priorize datas desejadas realistas para reduzir reagendamentos.',
-                      ),
+                      SizedBox(height: 16),
+                      ...[
+                        _AdviceRow(
+                          icon: Icons.badge_outlined,
+                          text:
+                              'Use CPF ou CNPJ para puxar cliente existente e evitar retrabalho.',
+                        ),
+                        _AdviceRow(
+                          icon: Icons.location_on_outlined,
+                          text:
+                              'Complete CEP, numero e detalhes operacionais com clareza.',
+                        ),
+                        _AdviceRow(
+                          icon: Icons.directions_car_outlined,
+                          text:
+                              'Cadastre o veiculo com placa, ano e modelo para reduzir contato de volta.',
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -109,6 +128,84 @@ class SellerDashboardScreen extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _SellerHero extends StatelessWidget {
+  const _SellerHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          colors: [AppColors.brandDark, AppColors.brand, AppColors.brandLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Venda bem. Cadastre melhor.',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontSize: 30,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Seu fluxo comercial agora fica mais rapido com cliente reutilizavel por CPF/CNPJ, endereco inteligente e retorno visual mais claro.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.84),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdviceRow extends StatelessWidget {
+  const _AdviceRow({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.brand.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppColors.brand, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          ),
+        ],
       ),
     );
   }

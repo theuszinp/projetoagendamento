@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Precisamos acessar a camera para registrar as fotos da instalacao.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Precisamos acessar a galeria para anexar fotos da instalacao.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Precisamos acessar a galeria para anexar fotos da instalacao.</string>
 </dict>
 </plist>

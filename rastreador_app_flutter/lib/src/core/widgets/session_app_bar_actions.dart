@@ -18,16 +18,26 @@ class SessionAppBarActions extends StatelessWidget {
 
     return PopupMenuButton<_SessionAction>(
       tooltip: 'Conta',
-      icon: CircleAvatar(
-        radius: 16,
-        backgroundColor: Colors.white.withValues(alpha: 0.18),
-        child: Text(
-          session.currentUser?.name.isNotEmpty == true
-              ? session.currentUser!.name[0].toUpperCase()
-              : '?',
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      icon: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: AppColors.brand.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.brand.withValues(alpha: 0.10)),
+        ),
+        child: Center(
+          child: Text(
+            session.currentUser?.name.isNotEmpty == true
+                ? session.currentUser!.name[0].toUpperCase()
+                : '?',
+            style: const TextStyle(
+              color: AppColors.brand,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ),
@@ -50,8 +60,8 @@ class SessionAppBarActions extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                session.currentUser?.name ?? 'Usuário',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                session.currentUser?.name ?? 'Usuario',
+                style: const TextStyle(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 2),
               Text(

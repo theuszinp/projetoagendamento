@@ -5,11 +5,15 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/app_session_controller.dart';
+import '../../../../core/utils/address_parser.dart';
 import '../../../../core/utils/cep_formatter.dart';
 import '../../../../core/utils/date_time_formatter.dart';
+import '../../../../core/utils/document_formatter.dart';
 import '../../../../core/widgets/session_app_bar_actions.dart';
 import '../../../address/data/via_cep_repository.dart';
 import '../../../address/domain/cep_lookup_result.dart';
+import '../../../customers/data/customer_repository.dart';
+import '../../../customers/domain/customer_lookup_result.dart';
 import '../../data/schedule_repository.dart';
 import '../../domain/address.dart';
 import '../../domain/create_schedule_input.dart';
@@ -49,8 +53,13 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
   bool _isSubmitting = false;
   bool _isLookingUpCep = false;
   bool _cepLookupSucceeded = false;
+  bool _isLookingUpCustomer = false;
+  bool _customerLookupSucceeded = false;
   String? _cepFeedbackMessage;
-  String? _lastLookupAttempt;
+  String? _customerFeedbackMessage;
+  String? _lastCepLookupAttempt;
+  String? _lastCustomerLookupAttempt;
+  int? _existingCustomerId;
 
   @override
   void dispose() {
@@ -107,6 +116,117 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     });
   }
 
+  void _handleDocumentChanged(String value) {
+    final formatted = DocumentFormatter.format(value);
+    if (formatted != value) {
+      _documentController.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+    }
+
+    final digits = DocumentFormatter.digitsOnly(formatted);
+    if (_lastCustomerLookupAttempt != null && digits != _lastCustomerLookupAttempt) {
+      setState(() {
+        _existingCustomerId = null;
+        _customerLookupSucceeded = false;
+        _customerFeedbackMessage = null;
+      });
+    }
+
+    if (DocumentFormatter.isValidLength(digits) &&
+        digits != _lastCustomerLookupAttempt &&
+        !_isLookingUpCustomer) {
+      _lookupCustomer(autoTriggered: true);
+    }
+  }
+
+  Future<void> _lookupCustomer({bool autoTriggered = false}) async {
+    final repository = context.read<CustomerRepository>();
+    final digits = DocumentFormatter.digitsOnly(_documentController.text);
+
+    if (!DocumentFormatter.isValidLength(digits)) {
+      if (!autoTriggered) {
+        _showMessage('Informe um CPF ou CNPJ valido.');
+      }
+      return;
+    }
+
+    if (_isLookingUpCustomer) {
+      return;
+    }
+
+    setState(() {
+      _isLookingUpCustomer = true;
+      _lastCustomerLookupAttempt = digits;
+      _customerFeedbackMessage = null;
+    });
+
+    try {
+      final customer = await repository.lookupByIdentifier(digits);
+      if (!mounted) {
+        return;
+      }
+
+      if (customer == null) {
+        setState(() {
+          _existingCustomerId = null;
+          _customerLookupSucceeded = false;
+          _customerFeedbackMessage =
+              'Cliente nao encontrado. Voce pode continuar o cadastro normalmente.';
+        });
+        return;
+      }
+
+      _applyExistingCustomer(customer);
+      setState(() {
+        _existingCustomerId = customer.id;
+        _customerLookupSucceeded = true;
+        _customerFeedbackMessage =
+            'Cliente encontrado na base. Nome, telefone e endereco foram preenchidos. O veiculo continua livre para outro carro.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _existingCustomerId = null;
+        _customerLookupSucceeded = false;
+        _customerFeedbackMessage = resolveErrorMessage(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLookingUpCustomer = false);
+      }
+    }
+  }
+
+  void _applyExistingCustomer(CustomerLookupResult customer) {
+    _customerNameController.text =
+        _preferLookupValue(customer.name, _customerNameController.text);
+    _phoneController.text =
+        _preferLookupValue(customer.phone, _phoneController.text);
+
+    final parsedAddress = AddressParser.parse(customer.address);
+    _streetController.text =
+        _preferLookupValue(parsedAddress.street, _streetController.text);
+    _numberController.text =
+        _preferLookupValue(parsedAddress.number, _numberController.text);
+    _complementController.text =
+        _preferLookupValue(parsedAddress.complement, _complementController.text);
+    _districtController.text =
+        _preferLookupValue(parsedAddress.district, _districtController.text);
+    _cityController.text =
+        _preferLookupValue(parsedAddress.city, _cityController.text);
+    _stateController.text = _preferLookupValue(
+      parsedAddress.state.toUpperCase(),
+      _stateController.text.toUpperCase(),
+    );
+    _cepController.text =
+        _preferLookupValue(parsedAddress.cep, _cepController.text);
+  }
+
   void _handleCepChanged(String value) {
     final formatted = CepFormatter.format(value);
     if (formatted != value) {
@@ -117,7 +237,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     }
 
     final digits = CepFormatter.digitsOnly(formatted);
-    if (_lastLookupAttempt != null && digits != _lastLookupAttempt) {
+    if (_lastCepLookupAttempt != null && digits != _lastCepLookupAttempt) {
       setState(() {
         _cepLookupSucceeded = false;
         _cepFeedbackMessage = null;
@@ -125,7 +245,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     }
 
     if (digits.length == 8 &&
-        digits != _lastLookupAttempt &&
+        digits != _lastCepLookupAttempt &&
         !_isLookingUpCep) {
       _lookupCep(autoTriggered: true);
     }
@@ -137,7 +257,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
 
     if (digits.length != 8) {
       if (!autoTriggered) {
-        _showMessage('Informe um CEP com 8 dígitos.');
+        _showMessage('Informe um CEP com 8 digitos.');
       }
       return;
     }
@@ -148,7 +268,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
 
     setState(() {
       _isLookingUpCep = true;
-      _lastLookupAttempt = digits;
+      _lastCepLookupAttempt = digits;
       _cepFeedbackMessage = null;
     });
 
@@ -162,16 +282,16 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
         setState(() {
           _cepLookupSucceeded = false;
           _cepFeedbackMessage =
-              'CEP não encontrado. Você pode preencher o endereço manualmente.';
+              'CEP nao encontrado. Voce pode preencher o endereco manualmente.';
         });
         return;
       }
 
-      _applyLookupResult(result);
+      _applyCepLookupResult(result);
       setState(() {
         _cepLookupSucceeded = true;
         _cepFeedbackMessage =
-            'Endereço localizado. Confira e edite os campos se precisar.';
+            'Endereco localizado. Confira os campos e ajuste se precisar.';
       });
     } on ViaCepException catch (error) {
       if (!mounted) {
@@ -189,27 +309,21 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     }
   }
 
-  void _applyLookupResult(CepLookupResult result) {
+  void _applyCepLookupResult(CepLookupResult result) {
     final formattedCep = CepFormatter.format(result.cep);
     _cepController.value = TextEditingValue(
       text: formattedCep,
       selection: TextSelection.collapsed(offset: formattedCep.length),
     );
-    _streetController.text = _mergeLookupValue(
-      lookupValue: result.street,
-      currentValue: _streetController.text,
-    );
-    _districtController.text = _mergeLookupValue(
-      lookupValue: result.neighborhood,
-      currentValue: _districtController.text,
-    );
-    _cityController.text = _mergeLookupValue(
-      lookupValue: result.city,
-      currentValue: _cityController.text,
-    );
-    _stateController.text = _mergeLookupValue(
-      lookupValue: result.state.toUpperCase(),
-      currentValue: _stateController.text.toUpperCase(),
+    _streetController.text =
+        _preferLookupValue(result.street, _streetController.text);
+    _districtController.text =
+        _preferLookupValue(result.neighborhood, _districtController.text);
+    _cityController.text =
+        _preferLookupValue(result.city, _cityController.text);
+    _stateController.text = _preferLookupValue(
+      result.state.toUpperCase(),
+      _stateController.text.toUpperCase(),
     );
 
     if (result.complement.trim().isNotEmpty &&
@@ -218,16 +332,12 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     }
   }
 
-  String _mergeLookupValue({
-    required String lookupValue,
-    required String currentValue,
-  }) {
+  String _preferLookupValue(String lookupValue, String currentValue) {
     final normalizedLookup = lookupValue.trim();
-    if (normalizedLookup.isNotEmpty) {
-      return normalizedLookup;
+    if (normalizedLookup.isEmpty) {
+      return currentValue.trim();
     }
-
-    return currentValue.trim();
+    return normalizedLookup;
   }
 
   String _buildFullAddress() {
@@ -254,7 +364,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _desiredDate == null) {
       _showMessage(
-        'Preencha todos os campos obrigatórios e selecione a data desejada.',
+        'Preencha os campos obrigatorios e selecione a data desejada.',
       );
       return;
     }
@@ -262,9 +372,25 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     setState(() => _isSubmitting = true);
 
     final repository = context.read<ScheduleRepository>();
+    final customerRepository = context.read<CustomerRepository>();
     final session = context.read<AppSessionController>();
 
     try {
+      if (_existingCustomerId == null &&
+          DocumentFormatter.isValidLength(_documentController.text)) {
+        final customer = await customerRepository.lookupByIdentifier(
+          DocumentFormatter.digitsOnly(_documentController.text),
+        );
+
+        if (customer != null) {
+          _applyExistingCustomer(customer);
+          _existingCustomerId = customer.id;
+          _customerLookupSucceeded = true;
+          _customerFeedbackMessage =
+              'Cliente reutilizado automaticamente antes do envio.';
+        }
+      }
+
       await repository.createSchedule(
         requesterId: session.currentUserId,
         input: CreateScheduleInput(
@@ -272,6 +398,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
           serviceDescription: _descriptionController.text.trim(),
           priority: _priority,
           customer: Customer(
+            id: _existingCustomerId,
             name: _customerNameController.text.trim(),
             document: _documentController.text.trim(),
             phone: _phoneController.text.trim(),
@@ -301,10 +428,14 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
         _priority = SchedulePriority.medium;
         _desiredDate = null;
         _cepLookupSucceeded = false;
+        _customerLookupSucceeded = false;
         _cepFeedbackMessage = null;
-        _lastLookupAttempt = null;
+        _customerFeedbackMessage = null;
+        _lastCepLookupAttempt = null;
+        _lastCustomerLookupAttempt = null;
+        _existingCustomerId = null;
       });
-      _showMessage('Solicitação enviada com sucesso.', isError: false);
+      _showMessage('Solicitacao enviada com sucesso.', isError: false);
     } catch (error) {
       _showMessage(resolveErrorMessage(error));
     } finally {
@@ -355,23 +486,29 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            Text(
-              'Cadastro rápido para o vendedor',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Digite o CEP para buscar o endereço automaticamente. Mesmo quando a API encontrar o local, todos os campos continuam editáveis.',
-            ),
-            const SizedBox(height: 20),
+            _buildHero(context),
+            const SizedBox(height: 18),
             _buildSection(
+              context,
               title: 'Cliente',
+              subtitle:
+                  'Digite o CPF ou CNPJ para puxar o cadastro existente. Nome, telefone e endereco continuam editaveis.',
               children: [
-                _requiredField(_customerNameController, 'Nome do cliente'),
-                _requiredField(_documentController, 'CPF/CNPJ'),
-                _requiredField(
+                _buildCustomerLookupField(),
+                _buildLookupBanner(
+                  message: _customerFeedbackMessage,
+                  success: _customerLookupSucceeded,
+                ),
+                _buildRequiredField(
+                  _customerNameController,
+                  'Nome do cliente',
+                  icon: Icons.person_outline,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                _buildRequiredField(
                   _phoneController,
                   'Telefone',
+                  icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
                 ),
                 _buildAddressFields(context),
@@ -379,16 +516,30 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
             ),
             const SizedBox(height: 16),
             _buildSection(
-              title: 'Veículo',
+              context,
+              title: 'Veiculo',
+              subtitle:
+                  'O veiculo nao e preenchido automaticamente, para permitir carros diferentes do mesmo cliente.',
               children: [
-                _requiredField(_vehicleModelController, 'Modelo do veículo'),
-                _requiredField(_vehiclePlateController, 'Placa'),
+                _buildRequiredField(
+                  _vehicleModelController,
+                  'Modelo do veiculo',
+                  icon: Icons.directions_car_outlined,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                _buildRequiredField(
+                  _vehiclePlateController,
+                  'Placa',
+                  icon: Icons.pin_outlined,
+                  textCapitalization: TextCapitalization.characters,
+                ),
                 Row(
                   children: [
                     Expanded(
-                      child: _requiredField(
+                      child: _buildRequiredField(
                         _vehicleYearController,
                         'Ano',
+                        icon: Icons.event_outlined,
                         keyboardType: TextInputType.number,
                       ),
                     ),
@@ -397,7 +548,10 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
                       child: TextFormField(
                         controller: _vehicleColorController,
                         textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(labelText: 'Cor'),
+                        decoration: const InputDecoration(
+                          labelText: 'Cor',
+                          prefixIcon: Icon(Icons.palette_outlined),
+                        ),
                       ),
                     ),
                   ],
@@ -406,21 +560,31 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
             ),
             const SizedBox(height: 16),
             _buildSection(
-              title: 'Serviço',
+              context,
+              title: 'Servico',
+              subtitle:
+                  'Informe o escopo tecnico, prioridade e a data desejada para o time operacional.',
               children: [
-                _requiredField(_titleController, 'Título da solicitação'),
+                _buildRequiredField(
+                  _titleController,
+                  'Titulo da solicitacao',
+                  icon: Icons.assignment_outlined,
+                ),
                 TextFormField(
                   controller: _descriptionController,
                   maxLines: 4,
                   validator: _requiredValidator,
                   decoration: const InputDecoration(
-                    labelText: 'Descrição técnica / escopo',
+                    labelText: 'Descricao tecnica / escopo',
+                    prefixIcon: Icon(Icons.description_outlined),
                   ),
                 ),
-                const SizedBox(height: 12),
                 DropdownButtonFormField<SchedulePriority>(
                   initialValue: _priority,
-                  decoration: const InputDecoration(labelText: 'Prioridade'),
+                  decoration: const InputDecoration(
+                    labelText: 'Prioridade',
+                    prefixIcon: Icon(Icons.flag_outlined),
+                  ),
                   items: SchedulePriority.values
                       .map(
                         (priority) => DropdownMenuItem(
@@ -435,28 +599,27 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
                     }
                   },
                 ),
-                const SizedBox(height: 12),
                 InkWell(
                   onTap: _pickDate,
                   borderRadius: BorderRadius.circular(18),
                   child: InputDecorator(
                     decoration: const InputDecoration(
                       labelText: 'Data desejada',
-                      prefixIcon: Icon(Icons.event_outlined),
+                      prefixIcon: Icon(Icons.event_available_outlined),
                     ),
                     child: Text(
                       _desiredDate == null
-                          ? 'Selecionar data e horário'
+                          ? 'Selecionar data e horario'
                           : DateTimeFormatter.shortDateTime(_desiredDate),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
                 TextFormField(
                   controller: _notesController,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    labelText: 'Observações do vendedor',
+                    labelText: 'Observacoes do vendedor',
+                    prefixIcon: Icon(Icons.sticky_note_2_outlined),
                   ),
                 ),
               ],
@@ -466,8 +629,8 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? const SizedBox(
-                      width: 20,
-                      height: 20,
+                      width: 22,
+                      height: 22,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
@@ -477,6 +640,83 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHero(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          colors: [AppColors.brandDark, AppColors.brand, AppColors.brandLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brand.withValues(alpha: 0.20),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Cadastro rapido e inteligente',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontSize: 30,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Puxe cliente por CPF/CNPJ, complete o endereco por CEP e deixe o time operacional receber uma solicitacao muito mais limpa.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.84),
+                ),
+          ),
+          const SizedBox(height: 18),
+          const Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _HeroChip(label: 'Cliente reutilizavel'),
+              _HeroChip(label: 'Endereco automatico'),
+              _HeroChip(label: 'Fluxo comercial agil'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerLookupField() {
+    return TextFormField(
+      controller: _documentController,
+      validator: _documentValidator,
+      keyboardType: TextInputType.number,
+      onChanged: _handleDocumentChanged,
+      decoration: InputDecoration(
+        labelText: 'CPF / CNPJ',
+        prefixIcon: const Icon(Icons.badge_outlined),
+        suffixIcon: _isLookingUpCustomer
+            ? const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : IconButton(
+                tooltip: 'Buscar cliente',
+                onPressed: _lookupCustomer,
+                icon: const Icon(Icons.search),
+              ),
       ),
     );
   }
@@ -498,6 +738,7 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
                 decoration: InputDecoration(
                   labelText: 'CEP',
                   hintText: '00000-000',
+                  prefixIcon: const Icon(Icons.location_searching_outlined),
                   suffixIcon: _isLookingUpCep
                       ? const Padding(
                           padding: EdgeInsets.all(14),
@@ -517,79 +758,48 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _requiredField(
+              child: _buildRequiredField(
                 _numberController,
-                'Número',
+                'Numero',
+                icon: Icons.looks_one_outlined,
                 keyboardType: TextInputType.number,
               ),
             ),
           ],
         ),
-        if ((_cepFeedbackMessage ?? '').isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: (_cepLookupSucceeded
-                      ? AppColors.brand
-                      : AppColors.warning)
-                  .withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: (_cepLookupSucceeded
-                        ? AppColors.brand
-                        : AppColors.warning)
-                    .withValues(alpha: 0.24),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  _cepLookupSucceeded ? Icons.check_circle : Icons.info_outline,
-                  color: _cepLookupSucceeded
-                      ? AppColors.brand
-                      : AppColors.textPrimary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _cepFeedbackMessage!,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        _requiredField(
+        _buildLookupBanner(
+          message: _cepFeedbackMessage,
+          success: _cepLookupSucceeded,
+        ),
+        _buildRequiredField(
           _streetController,
           'Logradouro',
+          icon: Icons.alt_route_outlined,
           textCapitalization: TextCapitalization.words,
         ),
-        const SizedBox(height: 12),
         TextFormField(
           controller: _complementController,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(labelText: 'Complemento'),
+          decoration: const InputDecoration(
+            labelText: 'Complemento',
+            prefixIcon: Icon(Icons.apartment_outlined),
+          ),
         ),
-        const SizedBox(height: 12),
-        _requiredField(
+        _buildRequiredField(
           _districtController,
           'Bairro',
+          icon: Icons.location_city_outlined,
           textCapitalization: TextCapitalization.words,
         ),
-        const SizedBox(height: 12),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               flex: 2,
-              child: _requiredField(
+              child: _buildRequiredField(
                 _cityController,
                 'Cidade',
+                icon: Icons.location_on_outlined,
                 textCapitalization: TextCapitalization.words,
               ),
             ),
@@ -600,7 +810,10 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
                 validator: _stateValidator,
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [LengthLimitingTextInputFormatter(2)],
-                decoration: const InputDecoration(labelText: 'UF'),
+                decoration: const InputDecoration(
+                  labelText: 'UF',
+                  prefixIcon: Icon(Icons.map_outlined),
+                ),
               ),
             ),
           ],
@@ -609,8 +822,50 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     );
   }
 
-  Widget _buildSection({
+  Widget _buildLookupBanner({
+    required String? message,
+    required bool success,
+  }) {
+    if ((message ?? '').trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final color = success ? AppColors.success : AppColors.warning;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withValues(alpha: 0.20)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              success ? Icons.check_circle_outline : Icons.info_outline,
+              color: color,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message!,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(
+    BuildContext context, {
     required String title,
+    required String subtitle,
     required List<Widget> children,
   }) {
     return Card(
@@ -619,8 +874,28 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: const BoxDecoration(
+                    color: AppColors.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(title, style: Theme.of(context).textTheme.titleLarge),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+            ),
+            const SizedBox(height: 18),
             ...children.expand((child) => [child, const SizedBox(height: 12)]),
           ],
         ),
@@ -628,9 +903,10 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
     );
   }
 
-  Widget _requiredField(
+  Widget _buildRequiredField(
     TextEditingController controller,
     String label, {
+    required IconData icon,
     int maxLines = 1,
     TextInputType? keyboardType,
     TextCapitalization textCapitalization = TextCapitalization.none,
@@ -641,32 +917,64 @@ class _NewScheduleScreenState extends State<NewScheduleScreen> {
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       validator: _requiredValidator,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+      ),
     );
   }
 
   String? _requiredValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Campo obrigatório';
+      return 'Campo obrigatorio';
     }
+    return null;
+  }
 
+  String? _documentValidator(String? value) {
+    if (!DocumentFormatter.isValidLength(value ?? '')) {
+      return 'Informe um CPF ou CNPJ valido';
+    }
     return null;
   }
 
   String? _cepValidator(String? value) {
     final digits = CepFormatter.digitsOnly(value ?? '');
     if (digits.length != 8) {
-      return 'Informe um CEP válido';
+      return 'Informe um CEP valido';
     }
-
     return null;
   }
 
   String? _stateValidator(String? value) {
     if (value == null || value.trim().length != 2) {
-      return 'UF inválida';
+      return 'UF invalida';
     }
-
     return null;
+  }
+}
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }
