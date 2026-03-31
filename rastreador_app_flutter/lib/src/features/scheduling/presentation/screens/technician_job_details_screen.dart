@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/maps/map_launcher_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/session/app_session_controller.dart';
 import '../../../../core/widgets/empty_state.dart';
@@ -212,6 +213,28 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
     }
   }
 
+  Future<void> _openOnMap() async {
+    final schedule = _schedule;
+    if (schedule == null) {
+      return;
+    }
+
+    final opened = await MapLauncherService.openAddress(
+      schedule.address.fullText,
+    );
+
+    if (!mounted || opened) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Não foi possível abrir o Google Maps neste aparelho.'),
+        backgroundColor: AppColors.danger,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -300,6 +323,7 @@ class _TechnicianJobDetailsScreenState extends State<TechnicianJobDetailsScreen>
               _ActionPanel(
                 schedule: item,
                 isProcessing: _isProcessing,
+                onOpenMap: _openOnMap,
                 onStart: _startService,
                 onComplete: _completeService,
               ),
@@ -343,12 +367,14 @@ class _ActionPanel extends StatelessWidget {
   const _ActionPanel({
     required this.schedule,
     required this.isProcessing,
+    required this.onOpenMap,
     required this.onStart,
     required this.onComplete,
   });
 
   final InstallationSchedule schedule;
   final bool isProcessing;
+  final Future<void> Function() onOpenMap;
   final Future<void> Function() onStart;
   final Future<void> Function() onComplete;
 
@@ -365,6 +391,12 @@ class _ActionPanel extends StatelessWidget {
           children: [
             Text('Ações rápidas', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: onOpenMap,
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('Abrir no Google Maps'),
+            ),
+            const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: canStart && !isProcessing ? onStart : null,
               icon: isProcessing && canStart

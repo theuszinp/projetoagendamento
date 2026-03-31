@@ -70,4 +70,18 @@ class UserRepository {
       rethrow;
     }
   }
+
+  Future<void> updateDeviceToken(String token) async {
+    try {
+      await _apiClient.putJson(
+        '/users/me/device-token',
+        body: <String, dynamic>{'fcm_token': token},
+      );
+    } on ApiException catch (error) {
+      if (error.isNotFound) {
+        return;
+      }
+      rethrow;
+    }
+  }
 }

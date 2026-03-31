@@ -7,7 +7,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final dependencies = AppDependencies.production();
-  dependencies.initialize();
+  await dependencies.initialize();
 
   runApp(MyApp(dependencies: dependencies));
 }
